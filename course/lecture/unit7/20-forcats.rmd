@@ -1,0 +1,348 @@
+---
+title: "`forcats` for factors"
+author: "Bi Cheng Wu"
+documentclass: article
+classoption: letterpaper
+output:
+  html_document:
+  highlight: tango
+---
+
+<style>
+h1{margin-top:30px}
+h2{margin-top:30px}
+h3{margin-top:30px}
+blockquote{margin-top:30px}
+</style>
+
+## Setup details
+
+Only need `tidyverse`.
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+
+# check if pacman package manager installed, then use to import all necessary packages
+library(tidyverse)
+
+## viridis colors
+source("../../scripts/viridis.R")
+```
+
+
+# Overview
+
+ - We will learn how to use `forcats` to effectively work with factors (categorical variables).
+
+
+# Background
+
+`forcats` is an **anagram** of "factors", which is what `R` calls categorical variables. The name is also extremely appropriate since it's functions are all designed to be used ***for*** ***cat***egorical variables. And of course, the logo is **four cats** sitting in a box.
+
+<center>
+<a href="https://forcats.tidyverse.org/">
+<img src="https://d33wubrfki0l68.cloudfront.net/412a6f14518ab633a94221dda7e16cf22e43a763/91620/css/images/hex/forcats.png" style="width:19%"/>
+</a>
+</center>
+
+## Base `R`
+
+In `R`, factors are actually internally represented as **a vector of integers** together with a **list of factor names** for each level.
+
+```{r numeric, error=TRUE}
+data(gss_cat)
+
+gss_cat$marital %>% head(50)
+
+# works because factor represented as number + name
+# this gets the numeric representation of each level
+as.numeric(gss_cat$marital) %>% head(50)
+
+# fails since character cannot be turned into number
+as.numeric(as.character(gss_cat$marital)) %>% head(50)
+```
+
+In `R`, pretty much always (i.e. as far as I can tell), **characters are treated the same way as factors** when used in plots, models, etc. However, converting characters to factors has some benefits:
+
+ - mainly, a vector of factors can **take much less memory** than a vector of characters, since `R` will store factors as a list of integers instead of repeatedly storing each character string
+
+```{r size}
+# default object size of gss_cat (categorical variables store as factors)
+str(gss_cat)
+gss_cat %>% 
+  object.size() %>% 
+  print(unit="Kb")
+
+# gss_cat but with character types changed into factors
+gss_cat %>% 
+  mutate_if(is.factor,as.character) %>% 
+  object.size() %>% 
+  print(unit="Kb")
+```
+
+As you can see, using characters instead of factors makes the same data frame take up about **$65\%$ more memory**.
+
+Another benefit of having a factor type is you can **use the functions introduced below to make working with them _much easier_**!
+
+### Levels and values
+
+Remember, **a factor has 2 components**:
+
+ - **levels** are the names of each category that are matched to the actual stored integers
+ - **values** are the actual integer numbers store in the data that represent each level
+
+The levels of a factor can be accessed using the base `R` function `levels()`.
+
+```{r}
+levels(gss_cat$marital)
+```
+
+Factors can also be set to be **ordered**, meaning you can compare levels to see which are higher or lower. This is commonly used for example, when using "low/medium/high" categories, or "strongly disagree/disagree/neutral/agree/strongly agree", or even when working with dates, e.g. "Monday/Tuesday/.../Sunday" or "January/February/.../December". Ordering is **commonly used to help sort categories in plots**.
+
+```{r}
+# note when using "label=TRUE", lubridate's week day and month functions
+# return an ordered factors, with the order being chronological ordering
+lubridate::wday(Sys.time(),label=TRUE)
+lubridate::month(Sys.time(),label=TRUE)
+```
+
+You can **check if a factor is ordered** by using the base `R` function `is.ordered()`
+
+```{r}
+is.ordered(gss_cat$marital)
+```
+
+Other than these relatively simple base `R` functions, there's not a lot of other useful functions for working with factors. This is where the `forcats` functions come in.
+
+## `forcats` functions
+
+***Here, encourage students to look at `forcats` cheat sheet (already uploaded to all Canvas sections)***
+
+Lets show some of these in action!
+
+
+> Use the `gss_cat` dataset, show some summary statistics for each factor column. Which levels are there? How many times is each observed?
+
+We can do this manually using the `fct_count()` function, which **counts how many times each level appears**
+
+```{r}
+# look to see which columns are factors
+str(gss_cat)
+
+# type them out manually:
+# fct_count(gss_cat$marital)
+# fct_count(gss_cat$race)
+# fct_count(gss_cat$rincome)
+# fct_count(gss_cat$partyid)
+# fct_count(gss_cat$relig)
+# fct_count(gss_cat$denom)
+```
+
+We can also be a little more clever about this and use `dplyr::select_if()` to select all factor columns and then use `purrr::map()` to summarize them all at once. We can also add in the `fct_infreq()` function to **sort the output by decreasing frequency** to improve readability.
+
+```{r}
+gss_cat %>% 
+  select_if(is.factor) %>% 
+  map(~{fct_count(fct_infreq(.x))})
+```
+
+<br/>
+
+We can also use `fct_unique()` to **just show the unique levels** in each factor.
+
+<br/>
+
+```{r}
+gss_cat %>% 
+  select_if(is.factor) %>% 
+  map(fct_unique)
+```
+
+<br/>
+
+We can see we actually have some "No answer", "Not applicable", "Refused", "Don't know", "None", and "No denomination" values that **should have been NA values**. We can change these to NA across our data frame to be more consistent since they represent missing values.
+
+Here's a quick shorthand way of doing it. This `df[df==value] = NA` syntax is a special syntax that will replace a value across a data frame in all columns (it only works well with the `==` operator, you actually can't use a `%in%` here).
+
+<br/>
+
+```{r}
+gss_cat[gss_cat=="No answer"] = NA
+gss_cat[gss_cat=="Don't know"] = NA
+gss_cat[gss_cat=="Not applicable"] = NA
+gss_cat[gss_cat=="Refused"] = NA
+gss_cat[gss_cat=="No denomination"] = NA
+gss_cat[gss_cat=="None"] = NA
+```
+
+<br/>
+
+We can check to see if these have been removed appropriately.
+
+<br/>
+
+```{r}
+gss_cat %>% 
+  select_if(is.factor) %>% 
+  map(~{fct_count(fct_infreq(.x))})
+```
+
+<br/>
+
+Note even though the values have been removed, they are **NOT removed from the levels** by default. We can use the `fct_drop()` function here to **remove levels that are no longer being used**, i.e. they do not exist in the data. Then, we can check one more time to see if these have been removed correctly.
+
+<br/>
+
+```{r}
+gss_cat = gss_cat %>% mutate_if(is.factor,fct_drop)
+
+gss_cat %>% 
+  select_if(is.factor) %>% 
+  map(~{fct_count(fct_infreq(.x))})
+```
+
+<br/>
+
+These look good now! Important note to make by the way, the denomination column **ONLY applies to protestant religion** in our data frame, so we need to be careful not to use this to throw away other religions!
+
+To show this, run the following line of code interactively in Rstudio and view the table (it's too wide to display well on this HTML page, so it's just easier to see in `R`).
+
+```{r,results='hide'}
+# run in Rstudio console:
+
+gss_cat %>% 
+  count(relig,denom) %>% 
+  pivot_wider(names_from=relig,values_from=n) %>% 
+  relocate(denom,Protestant,everything()) %>% 
+  View
+```
+
+
+> Plot number of hours of TV watched v. marital status, sorted by median in each category. Which marital status category tends to watch the most TV? Which watches the least?
+
+Let's start by just making a boxplot of the two variables.
+
+```{r}
+ggplot(gss_cat,aes(x=marital,y=tvhours)) + geom_boxplot()
+```
+
+These are not sorted by median. Let's fix that! We can use the `fct_reorder()` function to do this. It will **sort the first argument by the second argument**. You can also **provide a third argument to use as a summarizing function**. We can simply use this expression to replace the aesthetic variable we want to appear sorted.
+
+```{r}
+ggplot(gss_cat,aes(x=fct_reorder(marital,tvhours,median),y=tvhours)) + 
+  geom_boxplot()
+```
+
+Whoops! This didn't work correctly because **we have many missing values** in our data frame. We need to remember to **remove those first** or the `fct_reorder()` and `median()` will **not correctly work** for sorting!
+
+Let's go ahead and remove those before plotting. Note we are **ONLY dropping what we need to here** before plotting. Also note we are **piping the filtered data frame directly into `ggplot`** here.
+
+```{r}
+gss_cat %>% drop_na(tvhours,marital) %>% 
+  ggplot(aes(x=fct_reorder(marital,tvhours,median),y=tvhours)) + 
+  geom_boxplot()
+```
+
+Perfect!
+
+
+> Make a plot of hours of TV watched v. year, with marital status in different facets. Comment on any observations you see.
+
+This should be fairly straightforward to do.
+
+```{r}
+gss_cat %>% 
+  drop_na(year,tvhours,marital) %>% 
+  ggplot(aes(x=year,y=tvhours)) + 
+  geom_smooth(method="loess") + 
+  facet_wrap(~marital)
+```
+
+
+> Make a plot showing hours of TV watched v. religion, arranged in order of popularity.
+
+We make use of the `axis.text.x` argument in `theme()` to set `angle=15` to rotate the horizontal label text for readability. `hjust=1` tells the text to align at the right side (otherwise it will rotate around the center of the text).
+
+```{r}
+gss_cat %>% 
+  drop_na(tvhours,relig) %>% 
+  ggplot(aes(x=fct_infreq(relig),y=tvhours)) + 
+  geom_boxplot() + 
+  theme(axis.text.x = element_text(angle=15,hjust=1))
+```
+
+
+> Show a percentage breakdown of religion across the observations (including NA values). What percentage of the observations are Protestant?
+
+We can make use of `fct_infreq()` and `fct_count()` again here and then simply divide by the total. Note we can also use `arrange` instead of `fct_infreq()` but we're trying to showcase the `forcats` functions here, so we will use the first method.
+
+```{r}
+gss_cat %>% 
+  summarize(fct_count(fct_infreq(relig))) %>% 
+  mutate(prop = n/sum(n)*100)
+```
+
+
+> Show a percentage breakdown of denominations across the Protestant religion (remember the denomination column is ONLY for the Protestant people in this sample).
+
+Same thing here. This time there's a LOT more levels than before.
+
+```{r}
+gss_cat %>% 
+  filter(relig == "Protestant") %>% 
+  summarize(fct_count(fct_infreq(denom))) %>% 
+  mutate(prop = n/sum(n)*100) %>% 
+  print(n=Inf)
+```
+
+
+> Make another plot showing hours of TV watched v. denominations of Protestant, but only showing the top 10 most popular denomiations.
+
+This is commonly done when there are **too many groups and you want to limit how many groups are displayed** for sanity. Here we use the `fct_lump_n()` function. There are **other lumping functions in `forcats`**! Here are all the lumping functions (from the manual page):
+
+ - `fct_lump_min()` lumps levels that appear fewer than min times.
+ - `fct_lump_prop()` lumps levels that appear in fewer prop * n times.
+ - `fct_lump_n()` lumps all levels except for the n most frequent (or least frequent if n < 0)
+ - `fct_lump_lowfreq()` lumps together the least frequent levels, ensuring that "other" is still the smallest level.
+
+Here's what that would return in table format, just for illustrative purposes. We first use `fct_infreq()` to order by frequency, then we use `fct_lump_n()` to lump less popular categories, and finally we use `fct_count()` to tally up the categories to show in a table. Doing it in this way puts the "Other" at the end, which in this case is what I think we want.
+
+```{r}
+gss_cat %>% 
+  filter(relig == "Protestant") %>% 
+  drop_na(denom) %>% 
+  summarize(fct_count(fct_lump_n(fct_infreq(denom),10))) %>% 
+  mutate(prop = n/sum(n)*100)
+```
+
+Now, we plot the results.
+
+```{r}
+gss_cat %>% 
+  filter(relig == "Protestant") %>% 
+  drop_na(denom) %>% 
+  ggplot(aes(x=fct_lump_n(fct_infreq(denom),10),y=tvhours)) + 
+  geom_boxplot() + 
+  theme(axis.text.x = element_text(angle=15,hjust=1))
+```
+
+
+> This time, make a plot showing **age** v. denominations of Protestant, again only showing the top 10 most popular denomiations. Are there any major trends? Which religions seem more represented in the younger ages?
+
+This time, we slightly change the order. We want to use `fct_lump_n()` to lump low popularity categories again, but we use `fct_reorder()` again and sort by median age. Here is the code:
+
+```{r}
+gss_cat %>% 
+  filter(relig == "Protestant") %>% 
+  drop_na(denom,age) %>% 
+  ggplot(aes(x=fct_reorder(fct_lump_n(denom,10),age,median),y=age)) + 
+  geom_boxplot() + 
+  theme(axis.text.x = element_text(angle=15,hjust=1))
+```
+
+
+### Other functions?
+
+`forcats` has some other interesting functions that you are encouraged to study yourself and learn to use. The cheat sheet is a great place to start! Here we've only shown some of the most popular functions and how they may be used.
+

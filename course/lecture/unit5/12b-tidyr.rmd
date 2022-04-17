@@ -1,0 +1,247 @@
+---
+title: "Getting Started with tidyr"
+author: "Bret Larget"
+output: html_document
+---
+
+- Professor Jesse Kehe made contributions to these lecture notes.
+
+### Setup details
+
+- You will need the packages **tidyverse**, **lubridate**, and **XML** for this lecture. 
+
+- The following data files will be used and are assumed to be located two steps back from the working directory in a folder called `data/`.  Be sure to adjust the code if you have the data files in a different location.  
+`"../../data/DEN-2018.html"`  
+`"../../data/JFK-2018.html"`  
+`"../../data/LAX-2018.html"`  
+`"../../data/MSP-2018.html"`  
+`"../../data/ORD-2018.html"`  
+`"../../data/SFO-2018.html"` 
+
+- Be sure to read R4DS Chapter 12 for information on **tidyr**.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE,
+                      autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(lubridate)
+library(XML)
+```
+
+# tidyr 
+
+- Tidy data satisfy the following criteria
+
+    1. Each variable has its own column  
+    2. Each observation has its own row
+    3. Each value has its own cell
+  
+- Sometimes, we want to *reshape* data so that it is tidy (or tidy in a different way)
+- For example, sometimes we read in data in a *wide* format where there are multiple columns with the same sort of data and the columns names contain information about another variable
+    - An example of this is the airport waiting time data where the columns `all_n_0_15`, `all_n_16_30`, and so on each had a count of the number of passengers processed in some time interval and the column names had information about the limits of the time interval.
+    - We could *reshape* this data so that:
+        - all counts are in a single column
+        - there is a new column with the time interval information
+- The **tidyr** function to make this change is named `pivot_longer()`
+- There is also a complementary `pivot_wider()` function.
+
+## Airport Data
+
+- Let's consider our airport timing data from last week.
+
+```{r stuff-for-all-airports}
+## Input:  x = HTML file
+## Output: nicely formatted tibble
+read_airport =  function(x)
+{
+  airport_column_names = c("airport",
+                           "terminal",
+                           "date",
+                           "hour",
+                           "us_avg_wait",
+                           "us_max_wait",
+                           "non_us_avg_wait",
+                           "non_us_max_wait",
+                           "all_avg_wait",
+                           "all_max_wait",
+                           "all_n_0_15",
+                           "all_n_16_30",
+                           "all_n_31_45",
+                           "all_n_46_60",
+                           "all_n_61_90",
+                           "all_n_91_120",
+                           "all_n_120_plus",
+                           "all_excluded",
+                           "all_total",
+                           "all_flights",
+                           "all_booths")
+
+  airport = readHTMLTable(x)$`NULL` %>%
+    slice(-(1:3))
+
+  names(airport) = airport_column_names
+
+  airport = airport %>%
+    as_tibble() %>%
+    mutate(across(ends_with("wait") | starts_with("all"), as.numeric)) %>% 
+    mutate(across(where(is.factor),as.character)) %>% 
+    mutate(date = mdy(date))
+  
+  return( airport )
+}
+```
+
+### Read and Combine the Data
+
+```{r read-data}
+den = read_airport("../../data/DEN-2018.html")
+jfk = read_airport("../../data/JFK-2018.html")
+lax = read_airport("../../data/LAX-2018.html")
+msp = read_airport("../../data/MSP-2018.html")
+ord = read_airport("../../data/ORD-2018.html")
+sfo = read_airport("../../data/SFO-2018.html")
+
+awt = bind_rows(den,jfk,lax,msp, ord,sfo)
+rm(den,jfk,lax,msp,ord,sfo)
+
+str(awt)
+```
+
+
+### pivot_longer()
+
+- Each observation in the data set is a single airport/terminal/date/hour.
+
+- However, some of the columns contain data.
+    - Namely, the `all_n_*` columns contain information in the names about the number of passengers who wait for given time intervals.
+    
+- An alternative way to represent the data would be to have all of these counts be in a single column.
+
+- Then, an observation would entail a airport/terminal/date/hour/wait-interval combination.
+
+- Let's do this for the subset of the data that are not the waiting times or booths.
+
+```{r}
+## eliminate some columns
+awt_long = awt %>% 
+  select(-contains("_wait"), -all_total, -all_flights, -all_booths)
+
+## Show the column names
+names(awt_long)
+
+## Reshape the data by pivoting longer
+
+awt_long = awt_long %>%
+  pivot_longer(cols = starts_with("all_"),
+               names_to = "wait_interval",
+               values_to = "n")
+
+names(awt_long)
+```
+
+- Examine the first row of `awt` and the first eight rows of the reshaped long-format data set.
+
+```{r}
+## First row of awt with selected columns
+awt %>% 
+  select(-contains("_wait"), -all_total, -all_flights, -all_booths) %>% 
+  print(n = 1, width = Inf)
+
+## First 8 rows of awt_long have data from first row of awt
+awt_long %>% 
+  print(n = 8)
+```
+
+### pivot_wider()
+
+- The function `pivot_wider()` reshapes data by making it wider.
+- A common usage is to create a wider table after doing a summary.
+- Here, we demonstrate it's use after calculating the mean waiting time for all passengers by hour for each airport and then reshaping the data.
+
+#### Create the summary table
+
+- Average the mean waiting time for all passengers grouped by airport and hour
+
+```{r}
+awt_sum = awt %>% 
+  group_by(airport, hour) %>% 
+  summarize(mean_wait_time = mean(all_avg_wait))
+
+head(awt_sum)
+```
+
+- Next, use `pivot_wider()` to reshape the data with a column for each airport and a row for each hour.
+- The arguments are:
+    - `names_from()` which determines which variable will produce the new column names
+    - `values_from()` which determines which variable will produce the new values
+- There will be missing data if an airport had no arrivals during a particular hour.
+
+```{r}
+## pivot_wider example
+awt_sum_wide = awt_sum %>% 
+  pivot_wider(names_from = airport, values_from = mean_wait_time)
+
+awt_sum_wide %>% 
+  print(n = Inf, width = Inf)
+```
+
+- The basic summary is most useful for further calculations
+- The wider table is better to create a table to add to a report.
+
+### Fill-in missing values
+
+- Here, missing values are appropriate when there are no corresponding observations.
+- However, at times, it makes sense to use a value such as zero.
+- Let's do something similar, but calculate the total number of international arrivals per day for each airport at each hour.
+- Here, missing means zero.
+
+```{r}
+## First total arrivals by airport and hour
+awt_arrivals = awt %>% 
+  group_by(airport, hour) %>% 
+  summarize(flights = sum(all_flights))
+
+dim(awt_arrivals)
+
+awt_arrivals %>% 
+  print(n = 30)
+```
+
+- Now make wider
+
+```{r}
+## default, with missing values
+awt_arrivals_wide = awt_arrivals %>% 
+  pivot_wider(names_from = airport,
+              values_from = flights)
+
+awt_arrivals_wide %>% 
+  print(n = Inf, width = Inf)
+```
+
+- Do again, but replace `NA` with zero
+
+```{r}
+## default, with missing values
+awt_arrivals_wide = awt_arrivals %>% 
+  pivot_wider(names_from = airport,
+              values_from = flights,
+              values_fill = 0)
+
+awt_arrivals_wide %>% 
+  print(n = Inf, width = Inf)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

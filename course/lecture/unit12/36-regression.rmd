@@ -1,0 +1,502 @@
+---
+title: "Exoplanet Mass-Radius Relationship and Regression, continued"
+author: "Bret Larget"
+output: html_document
+---
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\SE}{\mathsf{SE}}
+\newcommand{\Var}{\mathsf{Var}}
+
+This file includes many contributions from Professor Jessi Kehe.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(modelr)
+library(tidymodels)
+library(kableExtra)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the exoplanet data set
+    - `COURSE/data/exoplanets_default_2021-06-15.csv`
+
+- You will need the packages:
+    - **tidyverse**
+    - **scales**
+    - **tidymodels**
+    - **modelr**
+
+
+## Data
+
+- Read in the exoplanet data, skipping the rows with meta data
+- Select a subset of variables and rename them
+
+```{r}
+## Read in the csv file
+## Select confirmed planets, rename some variables
+planets_orig = read_csv("../../data/exoplanets_default_2021-06-15.csv",
+                   skip = 100)
+
+planets = planets_orig %>% 
+  select(pl_name, hostname, discoverymethod, disc_year,
+         sy_pnum, pl_rade, pl_bmasse) %>%
+  rename(planet = pl_name,
+         star = hostname,
+         method = discoverymethod,
+         year = disc_year,
+         number = sy_pnum,
+         radius = pl_rade,
+         mass = pl_bmasse)
+```
+
+
+
+## Recall:  Mass-Radius Relationship
+
+The *mass-radius relationship* of exoplanets is the relationship between exoplanets’ radius, R, their mass, M.
+
+Modeling the relationship between mass and radius is important for the following reasons:
+
+- Prediction  
+    - The model can be used to predict a planet’s mass given its radius measurement  
+    - We have more observations with radius estimates than mass estimates, so having a way to estimate mass can be useful
+    
+```{r}
+## Number of mass and radius estimates
+planets %>%
+  select(mass, radius) %>%
+  summarize(across(everything(), ~{ sum(!is.na(.x)) }))
+```
+    
+- Learning about exoplanets compositions  
+    - Planet compositions can be inferred by their density  
+    - Exoplanets can have a range of compositions such as rocky or gaseous  
+    - Knowing about planet composition may help to understand planetary formation and evolution processes  
+    - For more information about planet compositions, see [exoplanet compositions](http://astro140.courses.science.psu.edu/theme4/census-and-properties-of-exoplanets/exoplanet-composition/)
+    
+    
+#### Plot Mass vs. Radius - quick look 
+
+Let's take a quick look at what the Mass-Radius relationship looks like for our exoplanet data.  We'll talk later about a way to model these data.
+
+```{r}
+ggplot(planets, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+
+```
+
+The *general* pattern is that there is a positive association between log10(radius) and log10(mass).
+
+
+#### Power-law model for Mass-Radius relationship
+
+One of the popular models used for the Mass-Radius relationship is a power-law relationship:
+
+$$
+y = C \times x^\theta
+$$
+where $y$ is the response variable, $x$ is the exoplantory variable, $C$ is a scaling factor, and $\theta$ is the power law coefficient.
+
+Such a model does not fit well over the entire data set.
+We restrict the data to:
+
+- Remove a secondary cluster of exoplanets with high mass relative to primary band.
+- Remove planets with large radii where the primary band fails to follow the same near-linear relationship with smaller radii.
+- Remove the few planets with the smallest radii to be consistent with the choice made by the original researchers.
+
+```{r}
+ggplot(planets, aes(x = radius, y = mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "no filtering by mass") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta") +
+  geom_hline(yintercept = c(2,127), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = c(0.75,3,8), color = "red", linetype = "dashed")
+```
+
+- When we do regression of mass on the radius, if we restrict the exoplanets to those with mass in the band between the two horizontal red dashed lines,
+we will be causing some poor fits due to the artifact of the filtering process.
+    - For low radii exoplanets, we will keep the planets above the magenta line, but discard those below, which will artificially affect the goodness of fit.
+    - We will discard most, but not all of the exoplanets in the secondary cluster largely above 100 Earth masses and between 0.75 and 8 Earth radii.
+    
+- We elect here to keep only those planets with radii between 0.75 and 8 Earth radii, to avoid the large nonlinear primary cluster of exoplanets with radius larger than 8 Earth radii (and mostly, but not all masses larger than 127 Earth masses), but we also wish to exclude the apparent second cluster by discarding planets with masses larger than 100 for the radius between 0.75 and 3 and those with mass larger than 200 among exoplanets with radius between 3 and 8.
+
+```{r, fig.cap = "All exoplanets we keep radius between 0.75 and 3 and mass less than 100 or radius between 3 and 8 and mass less than 200. The filtering criteria are selected to eliminate a secondary cluster of exoplanets with radius between 0.75 and 8 with masses well larger than the primary band, to eliminate the primary cluster of planets with radius larger than 8 where the trend of the primary band of mass versus radius experiences a dramatic change, and to eliminate the few planets with the smallest radii."}
+
+planets = planets %>% 
+  mutate(keep = case_when(
+    between(radius, 0.75, 3) & mass < 100 ~ TRUE,
+    between(radius, 3, 8) & mass < 200 ~ TRUE,
+    TRUE ~ FALSE))
+
+mr = planets %>% 
+  filter(keep) %>% 
+  drop_na()
+
+ggplot(planets, aes(x = radius, y = mass, color = keep)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "Keep the yellow values") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_vline(xintercept = c(0.75,8), color = "red", linetype = "dashed")
+
+ggplot(mr, aes(x = radius, y = mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "Filtered") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+```
+
+
+#### Recall:  Power law model 
+
+The form of the power law relationship is $y = C \times x^\theta$. 
+
+The statistical model we will actually fit is going to use a log10 transformation of the power law relationship in order to make the form linear:
+$$
+\begin{align*}
+y_i = \log10(m_i) & = \log10(C) + \theta\log10(r_i) + \varepsilon_i \\
+& = \log10(C) + \theta x_i + \varepsilon_i, i = 1, \ldots, n.
+\end{align*}
+$$
+In this model, the response variable $y_i = \log10(m_i)$ is the $\log10$(mass) for exoplanet $i$, the explanatory variable $x_i = \log10(r_i)$ is the $\log10$(radius) for exoplanet $i$, $\log10(C)$ is the (unknown) intercept, $\theta$ is the (unknown) slope, and $\varepsilon_i$ is the random error for exoplanet $i$.
+
+- We can use methods we've already learned to fit the model:
+
+```{r}
+## tidymodels approach
+mr_fit = linear_reg() %>% 
+  set_engine("lm") %>% 
+  fit(log10(mass) ~ log10(radius), data = mr)
+
+mr_tidy = tidy(mr_fit)
+mr_tidy
+
+## base R approach
+lm1 = lm(log10(mass) ~ log10(radius), data = mr)
+summary(lm1)
+
+cf = coef(lm1)
+
+## Add residuals and predicted values to our data frame 
+mr = mr %>%
+  add_residuals(lm1) %>%
+  add_predictions(lm1)
+```
+
+The estimated intercept is `r round(cf[1],3)` and the estimated slope is `r round(cf[2],3)`.
+
+
+#### Prediction
+
+Let's take a look at our estimated model on a plot again:
+
+```{r}
+ggplot(mr, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_abline(aes(slope = cf[2] , intercept = cf[1]), color="blue") 
+```
+
+The estimated regression model is 
+$$
+\hat{y}_i = `r round(cf[1],3)` + `r round(cf[2],3)` x_i.
+$$
+
+
+We can use the estimated linear model to predict a mass for a given radius.  
+
+Note that the function below assumes the input `x` is radius on the original scale and returns an estimated mass on the original scale.
+
+```{r}
+predict_y = function(x)
+{
+    ## x = radius (on original scale)
+    slope = cf[2]
+    intercept = coef(lm1)[1]
+    logy = intercept + slope*log10(x)
+    y = 10^logy
+    names(y) = "predicted mass"
+    return(y)
+}
+
+radius_input = 3
+mass_predicted = predict_y(3)
+mass_predicted
+```
+
+We can plot this point as well:
+
+```{r}
+ggplot(mr, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_abline(aes(slope = cf[2] , intercept = cf[1]), color="blue") +
+  geom_point(aes(x = radius_input, y=mass_predicted), color = "red", size = 2)
+```
+
+An interesting and useful feature of the least squares regression line is that it goes through the point $(\bar{x}, \bar{y})$.  We can check this with our function as well.  
+
+- This property holds on the scale of the linear model.  
+- Since our $x$ and $y$ variables were transformed, we have to make some adjustments to the scale.
+
+```{r}
+radius = 10^mean(log10(mr$radius)) ## mean of log10(radius), transformed back to original scale for function
+radius
+log10(predict_y(radius)) ## mean from predicted values
+mean(log10(mr$mass))  ## mean of log10(mass)
+
+```
+
+
+We can get our predicted values of mass, but there is uncertainty in this estimate, and it can be desirable to define an interval around the estimate to capture this uncertainty.  
+
+There are two common ways to look at this problem of predicting $\hat{y}$:
+
+- Confidence interval  
+    - The goal is an uncertainty interval around the parameter $\E(y \mid x^*)$, the expected value of the response given the explanatory variable $x^*$ (or the mean of all response values $y$ when $x$ is near $x^*$ in the population).
+
+- Prediction interval  
+    - The goal is an uncertainty interval around some future $y^*$ for some given $x^*$.  
+    - The prediction interval is trying to capture a *random* outcome $y^*$ rather than a fixed parameter like the $\E(y \mid x^*)$.  
+    
+We will focus on the confidence interval version next.
+
+
+
+
+
+
+
+
+
+
+## Confidence intervals for $\E(y \mid x^*)$
+
+The goal is an uncertainty interval around the parameter $\E(y \mid x^*)$, the expected value of the response given the explanatory variable $x^*$.
+
+The uncertainty in the estimated $\hat{y}$ needs to account for the uncertainty in the estimated intercept and estimated slope.  The formula for this uncertainty is
+$$
+\SE\big(\E(y \mid x^*)\big) = \sqrt{\left(\frac{1}{n-2} \sum_{i=1}^n(y_i - \hat{y}_i)^2\right)\left(\frac{1}{n} + \frac{(x^* - \overline{x})^2}{\sum_{i = 1}^n (x_i - \overline{x})^2} \right)}
+$$
+where $x^*$ is the log 10 radius for which the confidence interval of $\E(y \mid x^*)$ is desired.
+
+This standard error has two pieces:
+
+The first part is
+
+$$
+s = \sqrt{ \frac{\sum_{i=1}^n(y_i - \hat{y}_i)^2}{n-2} }
+$$
+
+which is an estimate of $\sigma$, and is the residual sum of squares divided by the regression degrees of freedom.
+
+The second part is
+
+$$
+\sqrt{ \frac{1}{n} + \frac{(x^* - \overline{x})^2}{\sum_{i = 1}^n (x_i - \overline{x})^2} } =
+\sqrt{ \frac{1}{n} + \frac{(x^* - \overline{x})^2}{n \hat{\sigma}_x^2} }
+$$
+
+where $\hat{\sigma}_x^2 = \sum_{i = 1}^n (x_i - \overline{x})^2/n$
+is the estimated variance of $x$ using the population variance formula (using $n$ and not $n-1$ in the denominator).
+
+If we go another step and write $x^* = \overline{x} + z^* \hat{\sigma}_x$,
+which is in terms of the number of standard units that $x^*$ differs from the mean $\overline{x}$, we get another simplification.
+
+$$
+(x^* - \overline{x})^2 = (\overline{x} + z^* \hat{\sigma}_x - \overline{x})^2 = (z^*)^2 \sigma_x^2
+$$
+
+and the second part simplifies to
+
+$$
+\sqrt{ \frac{1 + (z^*)^2}{n} }
+$$
+
+- This expression is equal to $1/\sqrt{n}$ when $z^* - 0$ meaning $x^* = \overline{x}$, but increases in size as $x^*$ moves away from the mean $\overline{x}$.
+    - For example, if $x^*$ is one standard deviation from the mean, then we get $\sqrt{2}/\sqrt{n} \doteq 1.41/\sqrt{n}$.
+    - If $x^*$ is two standard deviations from the mean, then the expression evaluates to $\sqrt{5}/\sqrt{n} \doteq 2.24/\sqrt{n}$.
+
+Finally, we can rewrite 
+
+$$
+\SE\big(\E(y \mid x^*)\big) = s \sqrt{\frac{1 + (z^*)^2}{n}}
+$$
+
+where $z^* = (x^* - \overline{x})/\hat{\sigma}_{x}$.
+
+
+- The standard error for the predicted value of $y$, $\SE\big(\E(y \mid x^*)\big)$, is an estimate of $\sigma$ times a modification of $1/\sqrt{n}$, similar to the formula for $\textsf{SE}{\bar{x}} = s/\sqrt{n}$, where the modification increases the standard error as $x^*$ deviates from $\overline{x}$.
+
+
+
+We can write a function to compute $\SE\big(\E(y \mid x^*)\big)$:
+
+```{r}
+se_yhat = function(x)
+{
+  ## x = radius on original scale
+  n = nrow(mr)
+  syy = sum(mr$resid^2)/(n-2)
+  mean_logx =mean(log10(mr$radius))
+  sxx = sum((log10(mr$radius) - mean_logx)^2)
+  out = sqrt(syy*(1/n + (log10(x)-mean_logx)^2/sxx))
+  return(out)
+}
+
+se_yhat(3)
+
+```
+
+
+Next we add the lower and upper bounds for 95% confidence interval to `mr`, then add them to our plot.
+
+These boundaries form a margin of error by multiplying a quantile from a t distribution with $n-2$ degrees of freedom by the estimated standard error.
+
+```{r}
+n = nrow(mr)
+mr = mr %>%
+  mutate(y_plus_me = pred + qt(0.975, n-2)*se_yhat(radius),
+         y_minus_me = pred - qt(0.975, n-2)*se_yhat(radius))
+
+ggplot(mr, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(method="lm", se=TRUE, color="red")+
+  geom_abline(aes(slope = coef(lm1)[2] , intercept = coef(lm1)[1]), color="blue") +
+  geom_line(aes(x = radius, y= 10^y_plus_me), color = "red", linetype="dashed") +
+  geom_line(aes(x = radius, y= 10^y_minus_me), color = "red", linetype="dashed") +
+  geom_vline(aes(xintercept = 10^(mean(log10(radius)))), color="blue", linetype="dotted")
+```
+
+Notice that our 95% confidence interval outlines the shaded region when we use `geom_smooth(method="lm", se=TRUE)`!
+
+It is subtle in the plot, but confidence interval narrows as $x^*$ gets closer to the mean of the $\log10$(radius).  
+
+- See the vertical dotted blue line above for the location of this mean.  
+- The formula for $s_{\hat{y}}$ reveals why this happens.
+
+
+
+
+
+
+
+
+## Prediction Intervals for random $y^*$
+
+- The goal is an uncertainty interval around some future $y^*$ for some given $x^*$.  
+- The prediction interval is trying to capture a *random* outcome $y^*$ rather than a fixed parameter like the $\E(y \mid x^*)$.  
+
+The uncertainty in some *random* outcome $y^*$ needs to account for the uncertainty in the estimated intercept and estimated slope, but also the uncertainty related to the randomness of the outcome (from the $\varepsilon^*$ associated with $y^*$).
+
+The formula for this uncertainty is
+$$
+\SE(\hat{y} \mid x^*) = \sqrt{\left(\frac{1}{n-2} \sum_{i=1}^n(y_i - \hat{y}_i)^2\right)\left(1 + \frac{1}{n} + \frac{(x^* - \overline{x})^2}{\sum_{i = 1}^n (x_i - \overline{x})^2} \right)}
+$$
+
+where $x^*$ is the log10 radius that is associated with $\hat{y}^*$.
+
+> Notice that $\frac{1}{n}$ is replaced by $1 + \frac{1}{n}$ to account for the additional uncertainty from an individual observation
+
+We can also write the simplified version of this as above.
+
+$$
+\SE(\hat{y} \mid x^*) = s \sqrt{1 + \frac{1 + (z^*)^2}{n}}
+$$
+
+where $z^* = (x^* - \overline{x})/\hat{\sigma}_{x}$.
+
+We can write a function to compute $s_{\hat{y}}$:
+```{r}
+se_yhatstar = function(x){
+  ## x = radius on original scale
+  n = nrow(mr)
+  syy = sum(mr$resid^2)/(n-2)
+  mean_logx =mean(log10(mr$radius))
+  sxx = sum((log10(mr$radius) - mean_logx)^2)
+  out = sqrt(syy*(1 + 1/n + (log10(x)-mean_logx)^2/sxx))
+  return(out)
+}
+
+se_yhatstar(3)
+
+```
+
+
+Next we add the lower and upper bounds for 95% prediction interval to `mr`, then add them to our plot
+
+```{r}
+n = nrow(mr)
+mr = mr %>%
+  mutate(ystar_plus_me = pred + qt(0.975, n-2)*se_yhatstar(radius),
+         ystar_minus_me = pred - qt(0.975, n-2)*se_yhatstar(radius))
+
+ggplot(mr, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_line(aes(x = radius, y= 10^ystar_plus_me), color = "green", linetype="dashed") +
+  geom_line(aes(x = radius, y= 10^ystar_minus_me), color = "green", linetype="dashed") +
+  geom_smooth(method="lm", se=TRUE, color="red")+
+  geom_abline(aes(slope = coef(lm1)[2] , intercept = coef(lm1)[1]), color="blue") +
+  geom_line(aes(x = radius, y= 10^y_plus_me), color = "red", linetype="dashed") +
+  geom_line(aes(x = radius, y= 10^y_minus_me), color = "red", linetype="dashed") +
+  geom_vline(aes(xintercept = 10^(mean(log10(radius)))), color="blue", linetype="dotted")
+```
+
+Notice the 95% prediction interval (green dashed lines) is wider than the 95% confidence interval.
+
+- About 95% of the individual values are between the green dashed lines
+- As the size $n$ increases:
+    - uncertainty in the location of the mean line $\E(y \mid x^*) = \beta_0 + \theta x^*$ decreases toward zero.
+    - the uncertainty in the location of the individual new point converges to the true individual uncertainty.
+    - The red curves converge to a straight line
+    - The green curves stay in about the same place
+
+
+

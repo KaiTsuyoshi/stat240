@@ -1,0 +1,500 @@
+---
+title: "Boston Marathon: Hypothesis Tests"
+author: "Bret Larget"
+output: html_document
+---
+
+This R Markdown document includes contributions by Professor Jessi Kehe.
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the Boston Marathon times
+    - `COURSE/data/TIM.txt`
+
+- You will need the packages:
+    - **tidyverse**
+    - **scales**
+    - **tidymodels**
+    - **dotwhisker**
+    - **egg**
+
+- The code uses **readr** function `read_table()` which assumes a version number at least 2.0.0.
+    - If your **readr** version number is older, please update.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(tidymodels)
+library(dotwhisker)
+library(egg)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## The Boston Marathon
+
+- We examine data from women aged 18-34 who completed the 2010 Boston Marathon
+
+
+### Data Wrangling
+
+- Data source: [Boston Maraton Data](https://rls.sites.oasis.unc.edu/boston.html)
+
+- The data set `TIM.txt` contains all times from 2010, 2011, and 2013.
+
+- We make the following changes to the original data:
+    - Eliminate the year 2013 as many racers did not finish due to the bombing
+    - Create a `Sex` variable
+    - Sum the times for racers for different race segments to obtain a total time
+    - Add an `Age_Range` variable
+- Note the use of `read_table()` to read in the data
+    - The `col_types` argument is set so that each column is read in as type *double* by default.
+
+
+```{r}
+bm_orig = read_table("../../data/TIM.txt",
+                col_types = cols(.default = col_double()))
+
+bm = bm_orig %>% 
+  filter(!is.na(`K40-Fin`)) %>% 
+  filter(Year < 2013) %>% 
+  arrange(Year, BibNum) %>% 
+  select(-starts_with("Start"), -HalfMar, -Age2014) %>% 
+  mutate(Sex = case_when(
+    Gender1F2M == 1 ~ "female",
+    Gender1F2M == 2 ~ "male")) %>% 
+  mutate(Time = pmap_dbl(select(., starts_with("K")), sum)) %>% 
+  mutate(age1 = case_when(
+    Age < 35 ~ 18,
+    Age >= 80 ~ 80,
+    TRUE ~ floor(Age/5)*5),
+    age2 = case_when(
+      Age < 35 ~ 34,
+      TRUE ~ age1 + 4),
+    Age_Range = case_when(
+      age1 == 80 ~ "80 and older",
+      TRUE ~ str_c(age1,"-",age2))) %>% 
+  select(-Gender1F2M, -age1, -age2) %>% 
+  relocate(BibNum, Year, Sex, Age, Age_Range, Time)
+```
+
+### Variables
+
+- The transformed data set has these variables:
+    - `BibNum`: bib number, a unique identifier for each competitor within a year
+    - `Year`" either 2010 or 2011
+    - `Sex`: female or male
+    - `Age`: age in years
+    - `Age_Range`: from 18-34, 35-39, ..., 75-79, and 80 and older
+    - `Time`: total time to finish in decimal minutes
+    - `K0-5` through `K40-Fin`: times in decimal minutes for 5 km segments of the race plus the final shorter segment.
+    
+## Women, 18-34
+
+```{r}
+women_18_34 = bm %>% 
+  filter(Sex == "female" & Age_Range == "18-34" & Year == 2010)
+
+women_18_34_sum = women_18_34 %>% 
+  summarize(n = n(),
+            xbar = mean(Time),
+            s = sd(Time))
+
+women_18_34_sum
+
+ggplot(women_18_34, aes(x = Time)) +
+  geom_histogram(fill = "lightpink",
+                 color = "black",
+                 boundary = 120,
+                 binwidth = 10) +
+  ylab("# of Women") +
+  ggtitle("2010 Boston Marathon Times",
+          subtitle = "Women aged 18-34, finishers") +
+  theme_minimal()
+
+```
+
+
+### Statisical Model
+
+- Let $\mu$ be the mean time in minutes for this population.
+- Our data is the 3557 times of the women in this age group who actually did complete the race, $x_1, \ldots, x_n$ for $n = 3557$.
+- We model the data as if being drawn from some distribution $F$ with mean $\mu$ and standard deviation $\sigma$ and as if they are independent observations.
+
+$$
+X_i \sim F(\mu, \sigma) \quad \text{for $i = 1, \ldots, n$}
+$$
+
+### Hypothesis Test
+
+- If:
+    - we are willing to treat the finishers in the 2010 Boston Marathon as a representative sample of all people in the world who could have qualified for and completed the Boston Marathon at that time (defining the population)
+    - $\mu$ is the average time in minutes that this population of 18-34 year old women would have finished the Boston Marathon had they all competed
+    
+> Test the hypothesis that the mean time $\mu = 240$ minutes versus the alternative that it is less ($\mu < 240$).
+
+- This is a one-sided hypothesis test.
+
+Steps:
+
+1. Define the population and sample
+2. State the statistical model for the data
+3. State hypotheses
+4. Choose a test statistic
+5. Determine the sampling distribution of the test statistic *when the null hypothesis is true*.
+6. Determine which outcomes are *at least as extreme as the observed test statistic*, or *which outcomes are at least as favorable to the alternative hypothesis as the observed test statistic* and find the collective probability of these outcomes. This probability is called a *p-value*.
+7. Use the p-value to interpret the strength of evidence against the null hypothesis in context, summarizing the statistical evidence by referring to the p-value and test.
+
+### Population and Sample
+
+- The population is women aged 18-34 in 2010 who were eligible for and could have competed in and finished the Boston Marathon that year
+- The sample is the 3557 women in this age group who did.
+
+### Statistical Model
+
+- Individuals times are $x_1, \ldots, x_n$ for $n = 3557$.
+- Model these times as a random sample from the larger population
+    - Let $F$ be this unspecified distribution
+    - Let $\mu$ be the mean
+    - Let $\sigma$ be the standard deviation
+
+$$
+X_i \sim F(\mu, \sigma), \quad i = 1, \ldots, n
+$$
+
+### State Hypotheses
+
+$H_0: \mu = 240$    
+$H_a: \mu < 240$
+
+### Choose a Test Statistic
+
+- We will standardize the sample mean by subtracting the (assumed) population mean and dividing by an estimated standard error.
+- Compare this normalized statistic to a distribution known from mathematical statistics
+
+$$
+T = \frac{\bar{X} - \mu}{s / \sqrt{n}}
+$$
+
+where:
+
+- sample mean: $\bar{X} = \sum_{i=1}^n X_i / n$
+    - R function `mean()`
+- sample standard deviation $s = \sqrt{ \sum_{i=1}^n (x_i - \bar{x})^2/(n-1)}$
+    - R function `sd()`
+
+- Here is the calculation:
+
+```{r}
+mu0 = 240
+
+women_18_34_sum = women_18_34_sum %>% 
+  mutate(tstat = (xbar - mu0)/(s/sqrt(n)))
+
+tstat = women_18_34_sum %>% 
+  pull(tstat)
+
+women_18_34_sum
+
+tstat
+```
+
+- We may interpret the test statistic in this way:
+
+> The observed sample mean is about 7.41 standard errors below the mean of the null distribution $\mu_0 = 240$.
+
+### Sampling Distribution
+
+- If the null hypothesis is true:
+    - $\bar{X}$ has:
+        -an approximate normal distribution, if $n$ is large enough
+        - mean $\mu$ (true for any $n$) and
+        - standard deviation $\sigma/\sqrt{n}$ (true for any $n$)
+
+- A result from mathematical statistics says that when we replace $\sigma$ with the sample standard deviation $s$, that
+
+$$
+T = \frac{\bar{X} - \mu}{s / \sqrt{n}} \sim t(n-1)
+$$
+
+- where $t(n-1)$ is a $t$ distribution with $n-1$ degrees of freedom
+- More on $t$ distribution later.
+
+### P-value Calculation
+
+- The p-value is the area to the left of the test statistic under the null sampling distribution. (Left because $H_a: \mu < 240$; otherwise twice as large.)
+- The function `pt(x, df)` calculates the probability (area) to the left of `x` under a `t` density with `df` degrees of freedom (more on this term later).
+- The observed test statistic is $t = `r round(tstat,2)`$
+- Statistics which are at least as favorable to the alternative hypothesis are those values less than or equal to $t$.
+
+```{r}
+women_18_34_sum = women_18_34_sum %>% 
+  mutate(pvalue = pt(tstat, n-1))
+
+pvalue = women_18_34_sum %>% pull(pvalue)
+
+women_18_34_sum
+
+pvalue
+```
+
+- This is a very small p-value and is effectively zero.
+- If the null hypothesis were true (and the sample were a random sample from the population of interest along with other assumptions), there is almost no chance of seeing what we observed or something more extreme.
+
+- Visualize the p-value
+
+```{r, fig.height = 3}
+gt(df = 3556, a = -10, b = 3) +
+  geom_t_fill(df = 3556, a = -10, b = tstat) +
+  geom_vline(xintercept = tstat, color = "red", linetype = "dashed") +
+  xlab("t") +
+  theme_minimal()
+```
+
+### Interpret
+
+> There is overwhelming evidence that the mean running time for all eligible women aged 18-34 in the 2010 Boston Marathon who would have finished the race had they competed is less than four hours, or 240 minutes ($p < 10^{-13}$, one-sided t-test, $df = 3556$).
+
+## Comparisons
+
+### t.test()
+
+- Compare to the results using `t.test()`.
+
+```{r}
+## data as a vector
+x = women_18_34 %>% 
+  pull(Time)
+
+## t.test()
+## change the null hypothesis mean from 0 to 240
+## change the direction of the alternative hypothesis
+t.test(x, mu = 240, alternative = "less")
+```
+
+### Compare to a simulation
+
+- We also could have tested without the t distribution.
+- Use the sample mean as the test statistic
+- Take many samples of size 3557 with replacement from and adjusted sample, by adding a constant so that the mean is equal to 240 as in the null hypothesis
+    - When calculating a p-value, assume that the null hypothesis is true!
+    - This uses the adjusted sample as a proxy for the population
+    
+```{r}
+pop = x + mu0 - mean(x)
+
+## check
+mean(pop)
+
+## Use purrr to iterate
+B = 50000
+n = women_18_34_sum %>% pull(n)
+xbar = women_18_34_sum %>% pull(xbar)
+  
+  
+xbar_star = map_dbl(1:B,
+                     ~{
+                       return( mean(sample(pop, size = n, replace = TRUE)) )
+                     })
+
+xbar_star[1:10]
+
+## p-value = proportion <= observed xbar
+mean(xbar_star <= xbar)
+```
+
+
+```{r, fig.height = 3}
+## graphical visualization
+tibble(x = xbar_star) %>% 
+ggplot(aes(x = x)) +
+  geom_density() +
+  geom_vline(xintercept = xbar, color = "red",
+             linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  xlab("Sample mean") +
+  ggtitle("Simulation-based P-value") +
+  theme_minimal()
+```
+    
+## More about t distributions
+
+If $X_1, \ldots, X_n$ are a random sample from a normal population with mean $\mu$ and standard deviation $\sigma$,
+then
+
+$$
+Z = \frac{\bar{X} - \mu}{\sigma/\sqrt{n}}
+$$
+
+has a standard normal distribution.
+
+By the *Central Limit Theorem*, if $n$ is large enough, $\bar{X}$ will have an approximate normal distribution and hence $Z$ will be approximately standard normal, even if the distribution in the population is not normal.
+
+However, if we replace the denominator by a random value, replacing $\sigma$ with the sample standard deviation $S$, then the statistic has more randomness that $Z$ above.
+
+We call this new distribution a t distribution.
+
+Unlike the normal distribution where all normal distributions have exactly the same shape, but may just differ in mean or standard deviation (center or scale), t distributions have different shapes for different sample sizes $n$.
+
+Each t distribution:
+
+- has a mean of 0
+- is symmetric with a bell shape
+- is defined by a single parameter called the *degrees of freedom*
+- in this setting, the degrees of freedom is $n-1$.
+- the standard deviation is larger than 1 and is equal to $d/(d-2)$ where $d$ is the degrees of freedom.
+    - If $d \le 2$, then the standard deviation is infinite.
+
+For very large $n$, the t distribution is approximately the standard normal distribution
+
+### Degrees of Freedom
+
+- Our data sample had $n = 3557$ pieces of information.
+- Our model required one parameter for the mean.
+- If we wanted to choose a set of data that matched the mean, we could make $n-1 = 3556$ free choices, but then the last choice would be forced in order to match the mean.
+- Thus, there are $n-1$ degrees of freedom.
+- In different settings, the number of degrees of freedom will have a different calculation.
+
+Note that $\frac{3556}{3556-2} \doteq `r round(3556/3554, 4)`$, so in this example, computing the p-value from a standard normal distribution instead of a $t$ distribution would have not made much of a difference.
+
+## t distribution graphs
+
+- The following sequence of graphs show the t distribution for various degrees of freedom.
+- In each case we overlay a partially transparent red standard normal distribution for comparision.
+
+```{r, fig.height = 40}
+degree_freedom = c(1:10, seq(20,100,10), 500, 1000)
+
+t_plots = degree_freedom %>% 
+  map(~{
+    gt(.x, scale = TRUE) +
+      geom_norm_density(color = "red", alpha = 0.5) +
+      theme_minimal()
+  })
+
+ggarrange(plots = t_plots,
+          ncol = 1,
+          nrow = length(degree_freedom))
+```
+
+### Compare 0.975 quantiles
+
+```{r}
+foo = tibble(
+  n = degree_freedom,
+  q_0.975 = qt(0.975, n)
+)
+
+foo %>% print(n = Inf)
+
+ggplot(foo, aes(x = n, y = q_0.975)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = qnorm(0.975), color = "red",
+             alpha = 0.5, linetype = "dashed") +
+  xlab("Degrees of Freedom") +
+  ylab("0.975 quantile") +
+  ggtitle("t distribution 0.975 quantiles") +
+  theme_minimal()
+
+foo %>% 
+  filter(n > 4) %>% 
+ggplot(aes(x = n, y = q_0.975)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = qnorm(0.975), color = "red",
+             alpha = 0.5, linetype = "dashed") +
+  xlab("Degrees of Freedom") +
+  ylab("0.975 quantile") +
+  ggtitle("t distribution 0.975 quantiles") +
+  theme_minimal()  
+```
+
+## tidymodels exploration
+
+- The function `t.test()` is a base R function which prints values to the screen
+- We show an alternative **tidyverse**-based approach using functions from **tidymodels** to fit the model and **dotwhisker** to visualize confidence intervals for the model parameters.
+
+- The function `linear_reg()` asks us to use a linear regression model where the response variable is modeled with a mean determined by a linear model of other variables
+    - In our example, there is no explanatory variable other than an intercept (here, $\mu$).
+- The function `set_engine()` allows us to specify `lm` for doing the inference.
+- The function `fit()` fits the linear model
+- The function `tidy()` creates a tidy summary object
+- The function `dwplot()` shows 95% confidence interval for model parameters
+
+The model we are fitting is
+
+$$
+X_i \sim \text{N}(\mu, \sigma) \quad \text{for $i = 1 \ldots, n$}
+$$
+
+The assumed normal distribution in the population is unimportant if $n$ is large enough, like here.
+
+```{r}
+f_18_34_fit = linear_reg() %>% 
+  set_engine("lm") %>% 
+  fit(Time ~ 1, data = women_18_34)
+
+f_sum = tidy(f_18_34_fit)
+
+f_sum
+```
+
+The estimate $\hat{mu}$ is simply the mean of the data.
+
+```{r}
+f_sum %>% pull(estimate)
+mean(x)
+```
+
+The standard error is $s / \sqrt{n}$.
+
+```{r}
+f_sum %>% pull(std.error)
+sd(x) / sqrt(n)
+```
+
+The statistic and p-value are using $H_0: \mu = 0$.
+We could change this to $H_0: \mu = 240$ by subtracting 240 from the data before fitting the model.
+
+```{r}
+## alternative data
+women_18_34_alt = women_18_34 %>% 
+  mutate(Time_alt = Time - 240)
+
+## fittin the same model
+linear_reg() %>% 
+  set_engine("lm") %>% 
+  fit(Time_alt ~ 1, data = women_18_34_alt) %>% 
+  tidy()
+```
+
+- A two-sided p-value is displayed
+
+### Confidence Interval
+
+```{r}
+## Confidence interval
+t_mult = qt(0.975, n-1)
+
+f_sum = f_sum %>% 
+  mutate(low = estimate - t_mult*std.error,
+         high = estimate + t_mult*std.error)
+
+f_sum %>% 
+  dwplot(show_intercept = TRUE)
+```
+
+
+
+

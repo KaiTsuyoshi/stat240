@@ -1,0 +1,272 @@
+---
+title: "Madison Weather"
+author: "Bret Larget"
+output: html_document
+---
+
+This R Markdown document includes contributions from Professor Jessi Kehe.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,  message=FALSE, warning=FALSE, cache=TRUE,
+                      autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(lubridate)
+library(scales)
+```
+
+# Madison Weather Overview
+
+- We will be working with data set containing weather data on Madison collect over a number of years from  different weather stations.
+- In addition to investigating different scientific questions on the data, we will also be learning about the [`dplyr` package](https://dplyr.tidyverse.org/) from `tidyverse` which is "a grammar of data manipulation."  
+
+## Overview of Madison Weather Data
+
+> The source of the data for this week is from the National Oceanic and Atmospheric Administration (NOAA) of the United States.
+
+- See [CNCS Chapter 7](https://bookdown.org/bret_larget/stat-240-case-studies/madison-weather.html) for more information.
+- The data set described here includes data through December 31, 2020.
+
+- The data file is `madison-weather-2020.csv`, and the variable descriptions are provided below.
+
+STATION: unique code for the weather station   
+NAME: station name    
+LATITUDE: station latitude  
+LONGITUDE: station longitude  
+ELEVATION: station elevation (feet above sea level)   
+DATE: date of observations  
+AWND: average wind speed (mph)  
+PRCP: precipitation (inches, water)  
+SNOW: snow fall (inches)  
+SNWD: snow depth (inches)  
+TAVG: daily average air temperature (degrees Fahrenheit)   
+TMAX: maximum air temperature (degrees Fahrenheit)   
+TMIN: minimum air temperature (degrees Fahrenheit)   
+WSF1: maximum one-minute wind speed  
+
+### Import Data
+
+- The data file has one row for each date and weather station.
+- The following block of code will read in the data.
+    - We specify the types of data in each column.
+    - This prevents an error where some variables with many initial rows of contain missing data and are set to be logical instead of numeric.
+    
+```{r}
+## Read in the data
+## Specify the type
+## This is needed to avoid issues for columns where first 1000 rows are all missing
+##   and the type is set to logical
+
+mw_original = read_csv("../../data/madison-weather-2020.csv",
+              col_types = cols(
+  STATION = col_character(),
+  NAME = col_character(),
+  LATITUDE = col_double(),
+  LONGITUDE = col_double(),
+  ELEVATION = col_double(),
+  DATE = col_date(format = ""),
+  PRCP = col_double(),
+  SNOW = col_double(),
+  SNWD = col_double(),
+  TAVG = col_double(),
+  TMAX = col_double(),
+  TMIN = col_double()))
+
+dim(mw_original)
+
+head(mw_original)
+```
+
+## Transform Data
+
+- I do not like using all capital letters for the variable names.
+    - Let's change names using the `rename()` function.
+- We will save the changed data in an object named `mw`.    
+
+```{r}
+## rename the variables
+mw = mw_original %>%
+  rename(station = STATION,
+         name = NAME,
+         latitude = LATITUDE,
+         longitude = LONGITUDE,
+         elevation = ELEVATION,
+         date = DATE,
+         prcp = PRCP,
+         snow = SNOW,
+         snow_depth = SNWD,
+         tavg = TAVG,
+         tmax = TMAX,
+         tmin = TMIN)
+```
+
+- The values in the `name` variable are long and unwieldly.
+- Change them using the `recode()` function inside of `mutate()`
+    - We use `mutate()` to create new variables or modify existing variables
+    - `recode()` is different than most **tidyverse** variables which change values
+    - Most use the idiom `new = old`, but `recode()` is backwards.
+    - This is an oddity of the language you just need to remember (or look up when there is an unexpected error).
+
+```{r}
+mw = mw %>% 
+  mutate(name = recode(name,
+                       `UW ARBORETUM MADISON, WI US` = "Arboretum",
+                       `CHARMANY FARM, WI US` = "Charmany",
+                       `MADISON DANE CO REGIONAL AIRPORT, WI US` = "Airport",
+                       `MADISON WEATHER BUREAU CITY, WI US` = "Bureau"))
+```
+
+## Weather Stations
+
+- Some of the variables refer to the weather stations and do not change.
+- Let's make a summary with one row per weather station where we can specify:
+    - The station code
+    - The earliest date included
+    - The latest date included
+    - The number of dates included in the data set
+    - The number of dates that are missing
+- Here is the strategy:
+    - use `group_by()` to do the calculations for each weather station separately
+    - compare the total number of possible dates from the earliest to latest dates with the actual number of values for each
+    
+```{r}
+stations = mw %>% 
+  select(station, name, latitude, longitude, elevation, date) %>% 
+  group_by(station, name, latitude, longitude, elevation) %>% 
+  summarize(first_date = min(date),
+            last_date = max(date),
+            n = n(),
+            possible = as.numeric(last_date - first_date) + 1,
+            missing = possible - n)
+stations
+  
+```
+    
+- The official weather station was the Madison Weather Bureau from January 1, 1869 until September 30, 1939 and then the Airport from October 1, 1939 to the present.
+- The weather stations at the Arboretum and Charmany Farms have a great deal of missing data.
+- We will modify the `mw` data set by:
+    - eliminating the station-specific variables
+    - eliminating observations from the Arboretum and Charmany Farms
+    - arranging by date
+- We can create an official Madison weather data set with one observation per date
+
+```{r}
+mw = mw %>%
+  select(name, date, prcp, snow, snow_depth, tmin, tmax, tavg) %>% 
+  filter(name == "Airport" | name == "Bureau") %>%
+  arrange(date, name)
+
+official = mw %>% 
+  filter(name == "Airport" | (name == "Bureau" & date < ymd("1939-10-01")))
+```
+
+- Let's redo the missing data calculations for the official data
+
+```{r}
+official_stations = official %>% 
+  select(name, date) %>% 
+  group_by(name) %>% 
+  summarize(first_date = min(date),
+            last_date = max(date),
+            n = n(),
+            possible = as.numeric(last_date - first_date) + 1,
+            missing = possible - n)
+official_stations
+```
+
+- The official record is missing just seven days.
+- We will explore this next.
+
+## Missing Data
+
+- There are seven missing dates in the official records.
+- In addition, there may be some missing data among the precipation and temperature data.
+- We will first add in the missing dates with missing data for all variables
+- Then, we will count missing data in each column of data.
+
+- To add missing dates, we will create a data frame with all dates from January 1, 1869 through September 30, 1939, and then join it to the official weather data set.
+
+```{r}
+## Create a temporary data file
+temp = tibble(
+  date = seq(ymd("1869-01-01"),ymd("1939-09-30"), 1),
+  name = "Bureau")
+
+## join with the official data set
+## show this adds the seven missing dates
+nrow(official) 
+
+official = official %>% 
+  full_join(temp)
+
+## Note there are now seven more dates added
+nrow(official)
+
+## Eliminate the temporary data set
+rm(temp)
+```
+
+- Next, count the missing observations in each variable
+- We create a function to count missing observations.
+- We cannot use comparisons such as `==` to compare with `NA`.
+- Instead, use `is.na()`.
+- We will learn more about writing functions later in the course.
+
+```{r}
+count_na = function(x)
+{
+  return( sum(is.na(x)) )
+}
+  
+```
+
+- Do the summary of missing data
+
+```{r}
+official_summary = official %>% 
+  summarize(prcp_na = count_na(prcp),
+            snow_na = count_na(snow),
+            depth_na = count_na(snow_depth),
+            tmax_na = count_na(tmax),
+            tmin_na = count_na(tmin),
+            tavg_na = count_na(tavg))
+
+official_summary
+```
+
+- There is a lot of missing data for average temperatures.
+- We can recalculate these as the average of the `tmax` and `tmin` variables.
+- There is minimal missing data for precipitation or maximum or minimum temperatures.
+    - Summaries of these variables after dropping missing data are not likely to be too inaccurate
+- Snow and snow depth data has a fair amount missing.
+    - Much of this is because the data was not recorded at the beginning of the collection period.
+    
+```{r}
+official %>% 
+  select(name, date, snow) %>% 
+  drop_na() %>% 
+  summarize(first_snow = min(date))
+
+official %>% 
+  select(name, date, snow_depth) %>% 
+  drop_na() %>% 
+  summarize(first_snow = min(date))
+```
+    
+- If we analyze the snow data, we will need to use a different time range.
+- Also, some NA snow totals in the summer or when precipitation is zero may really be zero and not missing.
+
+## Repair average temperature
+
+```{r}
+official = official %>% 
+  mutate(tavg = (tmin + tmax) / 2)
+```
+
+## Write files
+
+- It will be helpful to write the modified official weather data into a file so that we do not need to redo the data transformations each time
+
+```{r}
+write_csv(official, "../../data/madison-weather-official-2020.csv")
+```
+

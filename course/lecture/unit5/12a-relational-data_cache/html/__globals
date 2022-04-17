@@ -1,0 +1,12 @@
+unnamed-chunk-1	::	?	class	dim	names
+unnamed-chunk-2	%>%	>	atmos	count	filter	n	temp
+unnamed-chunk-3	!=	%>%	>	atmos	count	filter	lat	long	n
+unnamed-chunk-4	!=	%>%	>	atmos	count	filter	month	n	year
+unnamed-chunk-5	%>%	>	atmos	count	filter	lat	long	month	n	year
+drinks-discounts	c	tibble
+unnamed-chunk-6	%>%	c	discounts	drinks	inner_join
+unnamed-chunk-7	%>%	c	discounts	drinks	full_join
+unnamed-chunk-8	%>%	c	discounts	drinks	left_join
+unnamed-chunk-9	%>%	c	discounts	drinks	right_join
+filtering-joins	%>%	c	discounts	drinks	semi_join
+unnamed-chunk-10	%>%	anti_join	c	discounts	drinks

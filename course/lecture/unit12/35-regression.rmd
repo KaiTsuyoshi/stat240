@@ -1,0 +1,700 @@
+---
+title: "Exoplanet Mass-Radius Relationship and Regression"
+author: "Bret Larget"
+output: html_document
+---
+
+This file includes many contributions from Professor Jessi Kehe.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(modelr)
+library(tidymodels)
+library(kableExtra)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the exoplanet data set
+    - `COURSE/data/exoplanets_default_2021-06-15.csv`
+
+- You will need the packages:
+    - **tidyverse**
+    - **scales**
+    - **tidymodels**
+    - **modelr**
+
+
+
+
+
+## Data
+
+- Read in the exoplanet data, skipping the rows with meta data
+- Select a subset of variables and rename them
+
+```{r}
+## Read in the csv file
+## Select confirmed planets, rename some variables
+planets_orig = read_csv("../../data/exoplanets_default_2021-06-15.csv",
+                   skip = 100)
+
+planets = planets_orig %>% 
+  select(pl_name, hostname, discoverymethod, disc_year,
+         sy_pnum, pl_rade, pl_bmasse) %>%
+  rename(planet = pl_name,
+         star = hostname,
+         method = discoverymethod,
+         year = disc_year,
+         number = sy_pnum,
+         radius = pl_rade,
+         mass = pl_bmasse)
+```
+
+
+
+## Overview of Exoplanet Mass-Radius Relationship
+
+In previous lectures, we explored data from the NASA Exoplanet Archive.  Two variables that are useful for characterizing an exoplanet are mass and radius.
+
+The two most prolific methods for detecting exoplanets are the Transit Method and the Radial Velocity Method. 
+
+- The Transit Method works by monitoring the total light output of a star across time.  
+    - If a planet crosses between the star in the line-of-sight of the telescope, we may observe a dip in the light output of the star.  
+    - A dip that repeats at a regular period suggests that a planet may be present.
+    - Often at least three periodic dips are necessary for the detection to be considered credible.
+    - Here is a YouTube video that illustrates the Transit Method:  https://youtu.be/RrusIZaWDW8  
+    - The depth of the transit (i.e., the depth of the dip in the light output) can be used to estimate the planet's radius relative to the host star.
+    
+- The Radial Velocity (RV) Method looks for a wobble in the star suggesting an object may be orbiting it.  
+    - The host star is observed on multiple nights (often 30 or more) and a spectrum is collected using a spectrograph each nights (sometimes multiple times in a night).  
+    - From the observed spectrum, some techniques are used to estimate how fast the star was moving toward or away from the observed at the time the observation was collect (i.e., the radial velocity is estimated).  
+    - The estimated radial velocities are plotted against time.  If the points follow a particular pattern, it suggests the motion of the star may be due to a planet orbiting.  
+    - Here is a YouTube video that illustrates the RV Method:  https://youtu.be/tUzDKlaTHFM  
+    - Some properties of the shape of the fit RV curve can be used to estimate the mass of the orbiting exoplanet; more precisely, the minimum mass of the planet can be estimated.
+    
+
+### Mass-Radius Relationship
+
+The *mass-radius relationship* of exoplanets is the relationship between exoplanets’ radius, R, their mass, M.
+
+Modeling the relationship between mass and radius is important for the following reasons:
+
+- Prediction  
+    - The model can be used to predict a planet’s mass given its radius measurement  
+    - We have more observations with radius estimates than mass estimates, so having a way to estimate mass can be useful
+
+- **dplyr** use of `across()`
+    - Note we use `across()` to apply an anonymous function to count all non-missing values in each column after selecting
+    
+```{r}
+## Number of mass and radius estimates
+planets %>%
+  select(mass, radius) %>%
+  summarize(across(everything(), ~{sum(!is.na(.x))}))
+```
+    
+- Learning about exoplanets compositions  
+    - Planet compositions can be inferred by their density  
+    - Exoplanets can have a range of compositions such as rocky or gaseous  
+    - Knowing about planet composition may help to understand planetary formation and evolution processes  
+    - For more information about planet compositions, see [exoplanet compositions](http://astro140.courses.science.psu.edu/theme4/census-and-properties-of-exoplanets/exoplanet-composition/)
+    
+    
+#### Plot Mass vs. Radius - quick look 
+
+Let's take a quick look at what the Mass-Radius relationship looks like for our exoplanet data.  We'll talk later about a way to model these data.
+
+```{r}
+## How many observations do we have with both mass and radius estimates?
+planets %>%
+  select(mass, radius) %>%
+  drop_na() %>%
+  nrow()
+
+
+ggplot(planets, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)")
+```
+
+It's hard to see any clear pattern in this plot.  Let's adjust the axis scales to see if that helps.
+
+
+```{r}
+ggplot(planets, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+
+```
+
+Now we can see a bit more of a relationship between mass and radius on this log10 scale.
+
+The *general* pattern is that there is a positive association between log10(radius) and log10(mass).
+
+
+
+
+
+
+
+
+
+## Power-Law Relationship 
+
+One of the popular models used for the Mass-Radius relationship is a power-law relationship:
+
+$$
+y = C \times x^\theta
+$$
+where $y$ is the response variable, $x$ is the exoplantory variable, $C$ is a scaling factor, and $\theta$ is the power law coefficient.
+
+#### Examples of power laws
+
+```{r}
+power_law = function(theta)
+{
+  df = tibble(x = seq(0, 10, by = .1),
+               y =x^theta)
+  gg = ggplot(df, aes(x,y)) +
+    geom_line() +
+    ggtitle(paste0("Power law exponent: ", theta))
+  return(gg)
+}
+
+power_law(1)
+power_law(0.5)
+power_law(2)
+```
+
+
+#### Power-law model for Mass-Radius relationship
+
+
+While we will consider mass on the y-axis and radius on the x-axis, astronomers will often plot and model these the other way (with radius on the y-axis).  
+
+- Since the mass measurements tend to be harder to obtain, we can look at our mass vs. radius model as useful for using an estimated radius to predict an unknown mass.
+
+
+Astronomers have found that the power law relationship between mass and radius is not constant across the range of values, but instead there seems to be a different power law exponent for different mass ranges. 
+
+- This results in what is known as a *broken power law model* where different ranges of the data have different power law parameters.  
+- We will only consider a subset of the data where the power law exponent is thought to be constant.  We define this subset below.  
+- The range for masses we will consider is between 2 and 127 Earth masses.  This range comes from work by Jingjing Chen and David Kipping in 2016 where they took a data-driven approach to detect *change points* in the broken power law model.  
+    - Chen, J. and Kipping, D., 2016. Probabilistic forecasting of the masses and radii of other worlds. The Astrophysical Journal, 834(1), p.17.  
+    - In their model, they considered radius vs. mass, but found the noted mass range to be consistent with previous work looking for change points in radius.
+    
+- Below we make plots of the full data and filtered data before making a decision on how to look at a subset of the points when seeking part of a broken power law
+
+- First, look at radius versus mass on the log scale as done by Chen and Kipping (we have five years more data than they did).
+
+```{r}
+ggplot(planets, aes(y = radius, x = mass)) +
+  geom_point() +
+  ylab("Radius (Earth Radius)") +
+  xlab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "no filtering by mass") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta") +
+  geom_vline(xintercept = c(2,127), color = "red", linetype = "dashed")
+```
+
+- We can see the appearance of change to the right of the dashed line at 127 Earth masses.
+    - The primary band of planets flattens in radius as mass increases
+    - There is an additional cluster of planets with substantially smaller radii.
+    - One might argue that the cutoff ought to be even a bit below 127 to avoid all of the planets in that lower cluster (maybe some of these were discovered more recently than 2016).
+    
+- Next, look at the same graph, but swapping which axes have the planet mass and radius.
+
+```{r}
+ggplot(planets, aes(x = radius, y = mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "no filtering by mass") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta") +
+  geom_hline(yintercept = c(2,127), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = c(0.75,3,8), color = "red", linetype = "dashed")
+```
+
+- When we do regression of mass on the radius, if we restrict the exoplanets to those with mass in the band between the two horizontal red dashed lines,
+we will be causing some poor fits due to the artifact of the filtering process.
+    - For low radii exoplanets, we will keep the planets above the magenta line, but discard those below, which will artificially affect the goodness of fit.
+    - We will discard most, but not all of the exoplanets in the secondary cluster largely above 100 Earth masses and between 0.75 and 8 Earth radii.
+    
+- We elect here to keep only those planets with radii between 0.75 and 8 Earth radii, to avoid the large nonlinear primary cluster of exoplanets with radius larger than 8 Earth radii (and mostly, but not all masses larger than 127 Earth masses), but we also wish to exclude the apparent second cluster by discarding planets with masses larger than 100 for the radius between 0.75 and 3 and those with mass larger than 200 among exoplanets with radius between 3 and 8.
+
+```{r, fig.cap = "All exoplanets have 0.75 < radius < 3 and mass < 100 or 3 < radius < 8 and mass < 200. The filtering criteria are selected to eliminate a secondary cluster of exoplanets with radius between 0.75 and 8 with masses well larger than the primary band, to eliminate the primary cluster of planets with radius larger than 8 where the trend of the primary band of mass versus radius experiences a dramatic change, and to eliminate the few planets with the smallest radii."}
+
+planets = planets %>%
+  mutate(keep = case_when(
+    between(radius, 0.75, 3) & mass < 100 ~ TRUE,
+    between(radius, 3, 8) & mass < 200 ~ TRUE,
+    TRUE ~ FALSE))
+
+mr = planets %>% 
+  filter(keep) %>% 
+  drop_na()
+
+ggplot(planets, aes(x = radius, y = mass, color = keep)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "Keep the yellow values") +
+  scale_x_log10() +
+  scale_y_log10()
+
+ggplot(mr, aes(x = radius, y = mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets, Mass versus Radius",
+          subtitle = "Filtered") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+```
+
+
+
+
+
+## Fitting the Power Law Model
+
+We already saw the form of the power law relationship is $y = C \times x^\theta$. Now we'd like to turn this into a statistical model that we can use for the exoplanet data.
+
+The statistical model we will actually fit is going to use a log10 transformation of the power law relationship in order to make the form linear:
+$$
+\begin{align*}
+y_i = \log10(m_i) & = \log10(C) + \theta\log10(r_i) + \varepsilon_i \\
+& = \log10(C) + \theta x_i + \varepsilon_i, i = 1, \ldots, n.
+\end{align*}
+$$
+In this model, the response variable $y_i = \log10(m_i)$ is the $\log10$(mass) for exoplanet $i$, the explanatory variable $x_i = \log10(r_i)$ is the $\log10$(radius) for exoplanet $i$, $\log10(C)$ is the (unknown) intercept, $\theta$ is the (unknown) slope, and $\varepsilon_i$ is the random error for exoplanet $i$.
+
+- Now we have a linear model and can use methods we've already learned to fit the model!
+
+```{r}
+lm1 = lm(log10(mass) ~ log10(radius), data = mr)
+summary(lm1)
+cf1 = coef(lm1)
+cf1
+log10C = cf1[1]
+theta_hat = cf1[2]
+```
+
+The estimated intercept is `r round(log10C,3)` and the estimated slope is `r round(theta_hat,3)`.
+
+Let's check out our fit model on a plot:
+
+```{r}
+ggplot(mr, aes(radius, mass)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_abline(aes(slope = theta_hat, intercept = log10C), color="blue")
+```
+
+Let's also see what this looks like on the original scale.  
+
+```{r}
+mr %>%
+  mutate(mass_pred = 10^log10C*radius^theta_hat) %>%
+ggplot(aes(radius, mass)) +
+  geom_point() +
+  geom_line(aes(y = mass_pred), color="red") +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)")
+```
+
+
+Recall that the estimated slope is the power law exponent.  Since it is somewhat near to 1, this suggests that the data on the original scale are not too far from linear in radius.  
+
+- How does our power law model compare to a simple linear regression model fit to our data on the original scale?
+
+```{r}
+mr %>%
+  mutate(mass_pred = 10^log10C*radius^theta_hat) %>%
+ggplot(aes(radius, mass)) +
+  geom_point() +
+  geom_line(aes(y = mass_pred), color="red") +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  geom_smooth(method="lm", se=FALSE, color="blue")
+
+summary(lm(mass ~ radius, data=mr))
+```
+
+These models are different.  We will do some model checking on the appropriateness of our linear model on the log10 scale next.
+
+
+
+
+
+
+
+
+
+
+## Model checking
+
+The linear model we fit uses least squares regression.  
+
+- This means that the parameters were estimated to minimize the total sum of squared errors.  
+-  Let's create a plot that displays these errors.
+
+```{r}
+mr = mr %>%
+  add_residuals(lm1) %>%
+  add_predictions(lm1)
+
+ggplot(mr, aes(x=radius, y=mass)) +
+  geom_point() +
+  geom_segment(aes(xend = radius, yend = 10^pred), color="magenta") +
+  xlab("Radius (Earth Radius)") +
+  ylab("Mass (Earth Mass)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_abline(aes(slope = theta_hat, intercept = log10C), color="blue")
+```
+
+
+The vertical magenta bars are the residuals for the model defined as $r_i = y_i - \hat{y}_i$, where $\hat{y}_i$ is the predicted $\log10$(mass) from our model for exoplanet $i$.  
+ 
+- Our fit linear model is such that the sum of the squares of the lengths of these vertical lines is minimized.  
+- That is, if we drew a different line on this plot and found the errors, the sum of those errors squared would be greater than those for our `lm1` fit.
+
+#### Residual plot
+
+Next we are going to consider a residual plot.  This is where we remove the fit model from the data, and only plot the errors (the residuals) against radius.
+
+```{r}
+ggplot(mr, aes(x=radius, y=resid)) +
+  geom_point() +
+  xlab("Radius (Earth Radius)") +
+  ylab("Residual (Earth Mass)") +
+  scale_x_log10() +
+  geom_hline(aes(yintercept = 0), color = "red", linetype = "dashed") +
+  geom_smooth(se = FALSE)
+```
+
+
+Patterns in a residual plot can suggest that our linear model model may not be appropriate for the data. 
+The smooth curve added to the residual plot helps to identify the pattern.
+
+- In this case, there are only minimal differences between the blue curve and the dashed red line.
+- Overall, the model form seems reasonable.
+
+
+
+
+
+
+
+
+
+## Introduction to inference on linear models
+
+
+####  Assumptions on the random errors
+
+Let's go back to our linear model, 
+$$
+y_i = \log10(C) + \theta x_i + \varepsilon_i, i = 1, \ldots, n.
+$$
+
+We only mentioned that the $\varepsilon_i$'s are random errors, but we did not discuss other assumptions.
+
+It is common to make the following assumptions (which should also be checked):  
+
+- $E(\varepsilon_i) = 0$.  
+    - This implies $E(y_i) = \log10(C) + \theta x_i$.  
+- Errors have a constant variance:  Var$(\varepsilon_i) = \sigma^2$.  
+    - This implies Var$(y_i) = \sigma^2$.  
+- The errors are uncorrelated.
+
+When desiring to do inference on the estimated parameters, another common assumption to make is that the errors are normally distributed, $\varepsilon_i \sim N(0, \sigma)$.  
+
+  - This implies that $y_i \sim N(\log10(C) + \theta x_i, \sigma)$.
+
+This normality assumption on the errors has implications for the estimates of our parameters.  In particular, it has the consequence that the estimators of our intercept and slope are normally distributed.  
+
+
+## Recall: Z-scores and t-scores
+
+In a previous discussion assignment you were introduced to Z-scores and t-scores.  The t-scores are going to show in our regression inference, so we review that information here.  
+
+> Note that in this review, the estimator is the sample mean.  When we get back to regression the estimators will be for the slope or intercept, which will result in some changes in the t-statistic and the degrees of freedom of the resulting t-distribution.
+
+Assume a model where $X_1,\ldots,X_n$ are drawn at random from a distribution with a mean $\mu$ and a standard deviation $\sigma$.
+
+The sampling distribution of the sample mean,
+$\bar{X} = n^{-1}\sum_{i=1}^n X_i$ has a mean $\mu$ and standard deviation $\sigma/\sqrt{n}$.
+
+A mathematical derivation is required to show this formally, or simulation can be used to check if it the expressions are plausible.
+
+#### Z-Score
+
+We have seen in many settings that the z-statistic (substract the mean, divide by the standard deviation) often has an approximate standard normal distribution.
+$$
+Z = \frac{\bar{X} - \mu}{\sigma/\sqrt{n}}
+$$
+If the distribution of each $X_i$ is normal, then $Z$ will be normal as well.
+
+Even if $X_i$ does not have a normal distribution, the distribution of $\bar{X}$ will be approximately normal if $n$ is large enough to overcome the non-normality, a result known as the central limit theorem.
+
+#### t distribution
+
+However, $\sigma$ is typically unknown and things are a bit different when the sample standard deviation $s$ is substituted for $\sigma$.
+$$
+T = \frac{\bar{X} - \mu}{S/\sqrt{n}}
+$$
+where
+$$
+S = \sqrt{ \frac{\sum_{i=1}^n (X_i - \bar{X})^2}{n-1} }
+$$
+
+The added random variability in the denominator means that even when the distribution of a single random variable is exactly normal, the distribution of $T$ is not.
+
+Instead, it has a $t$ distribution with $n-1$ degrees of freedom, which is a bell-shaped density centered at zero, but more spread out than a standard normal density.
+
+When the degrees of freedom becomes large, the $t$ distribution is quite close to standard normal.
+
+It is identical to standard normal when the degrees of freedom is infinite.
+
+#### R functions
+
+These R functions are similar to their normal counterparts.
+
+- `rt()`: generate random variables from a t distribution
+- `pt()`: find an area under a t density
+- `qt()`: find a quantile from a t density
+- `dt()`: return the height of the t density
+
+In addition, the following functions are available in the script ggprob.R to add t densities to plots.
+
+- `geom_t_density()`: add a t density to a plot
+- `geom_t_fill()`: add a filled t density
+- `gt():` graph a t density
+
+The following graph shows a standard normal distribution in black and t distributions with degrees of freedom equal to 1, 2, 4, 8, \ldots, 1028 ranging from yellow to violet.
+
+```{r show-t, echo=FALSE, fig.height=4}
+col = viridis(10,begin=1,end=0)
+g = ggplot()
+  
+for ( i in 1:10 )
+  g = g + geom_t_density(2^(i-1),color=col[i],a=-5,b=5)
+
+g = g +
+  geom_norm_density(color="black", size = 0.5) +
+  geom_hline(yintercept=0) +
+  theme_bw()
+
+plot(g)
+```
+
+#### Confidence Intervals
+
+A confidence interval for $\mu$ has the form
+$$
+\bar{x} \pm t^* \frac{s}{\sqrt{n}}
+$$
+where $t^*$ is selected so that the area between
+$-t^*$ and $t^*$ under a t density with $n-1$ degrees of freedom is the desired confidence level.
+
+A confidence interval for a difference between means,
+$\mu_1 - \mu_2$,
+has the form
+$$
+\bar{x}_1 - \bar{x}_2 \pm t^* 
+  \sqrt{ \frac{s_1^2}{n_1} + \frac{s_2^2}{n_2} }
+$$
+where $t^*$ is from a $t$ distribution
+where the degrees of freedom is estimated as a function of the sample sizes and standard deviations.
+Use the function `t.test()`.
+This approach assumes that the standard deviations of the two populations need not be the same.
+
+#### Hypothesis Tests
+
+When using t distribution methods,
+p-values are found by calculating the t statistic and finding areas under t distributions.
+
+
+## Back to regression
+
+These concepts will be used to carryout inference on the estimated parameters of our simple linear model, which we will do next.
+
+
+
+
+
+
+
+
+
+## Inference for linear models
+
+If we make the assumption that the errors on linear model are normally distributed, we can carryout hypothesis test on our estimated parameters.
+
+We will focus on inference for the slope parameter since that tends to be the more scientifically interesting parameter.  
+
+The hypothesis test we will carryout is
+$$
+H_0:  \theta = 1 \\
+H_a:  \theta \neq 1
+$$
+
+We test the null that our slope parameter $\theta$ (which is the power law exponent) is 1, suggesting a linear relationship between $\log10$(mass) and $\log10$(radius), against the alternative that there is a power law relationship.
+
+This leads to the test statistic
+$$
+T = \frac{\hat{\theta} - 1}{s_{\hat{\theta}}}
+$$
+where $s_{\hat{\theta}}$ is the standard error of $\hat{\theta}$.  Note that the 1 is from the null hypothesis assumption that $\theta = 1$.
+
+- In case you were curious, the formula for this standard error is
+$$
+s_{\hat{\theta}} =  \sqrt{\frac{\sum_{i = 1}^n (y_i - \hat{y}_i)^2/(n-2)}{\sum_{i = 1}^n (x_i - \overline{x})^2}}
+$$
+where $\overline{x}$ is the sample mean of the $x_i$, and $\hat{y}_i$ is the predicted $\log10$(mass) values for observation $i$.  
+
+- We can calculate this as follows:
+```{r}
+n = nrow(mr)
+syy = sum(mr$resid^2)
+sxx = sum((log10(mr$radius) - mean(log10(mr$radius)))^2)
+sqrt(syy/(n-2)/sxx)  ## standard error using the formula above
+coef(summary(lm1))[2, "Std. Error"] ## standard error from our lm1 model
+```
+
+This is also the standard error that would be used in a confidence interval for $\theta$:  $\hat{\theta} \pm t_{n-2} s_{\hat{\theta}}$, where $t_{n-2}$ is selected based on the desired confidence level.  
+
+- You may be wondering why we have a $t$ distribution with $n-2$ degrees of freedom here.  This is because our model has two parameters (the slope and intercept) so we "use up" two degrees of freedom when estimating them. 
+
+
+The output of our estimated model gives us the result of (a different) hypothesis test:
+$$
+H_0:  \theta = 0 \\
+H_a:  \theta \neq 0
+$$
+
+```{r}
+summary(lm1)
+theta_hat = coef(lm1)[2]
+se_theta = coef(summary(lm1))[2, "Std. Error"]
+n = nrow(mr)
+theta_hat
+se_theta
+n
+```
+
+The estimated slope is $\hat{\theta} = `r round(theta_hat,3)`$ with an estimated standard error of $SE(\hat{\theta}) = `r round(se_theta,3)`$.
+
+This leads to a t-statistic of
+$$
+T = \frac{`r theta_hat` - 0}{`r se_theta`} = `r round(theta_hat/se_theta,2)`
+$$
+
+We see that there are `r nrow(mr)` observations in our data set.  Since there are two estimated parameters in our linear model (slope and intercept), we use $`r n` - 2 = `r n-2` degrees of freedom for the t-distribution for our slope.
+
+```{r}
+## Number of observations
+mr %>%
+  nrow()
+
+## Compute our p-value
+(1 - pt(theta_hat/se_theta, df=n-2))*2 ## P(T >= 15.57 ) x 2
+```
+
+Notice that this p-value is very small leading us to reject the null hypothesis that the slope is zero.
+
+
+
+
+To carryout our hypothesis test with
+$$
+H_0:  \theta = 1 \\
+H_a:  \theta \neq 1
+$$
+we use the following t-statistic:
+$$
+T = \frac{`r theta_hat` - 1}{`r se_theta`} = `r (theta_hat - 1)/se_theta`
+$$
+
+```{r}
+## t-statistic
+tstat = (theta_hat - 1)/se_theta
+tstat
+
+## Compute our p-value
+p_value = (1 - pt(tstat, df=n-2))*2 ## P(T >= 3.43) x 2
+p_value
+```
+
+> There is evidence that the power law is better than a linear model to predict mass from radius among the primary band of exoplanets with radii between 0.75 and 8 Earth radii ($p < `r round(p_value,4)`$, two-sided t test for regression.)
+
+We can create a plot to visualize the p-value:
+
+```{r}
+gt(n-2) +
+  geom_vline(aes(xintercept = c(-abs(tstat), tstat)), color="red", linetype="dashed") +
+  geom_t_fill(n-2, a = abs(tstat), b=6) +
+  geom_t_fill(n-2, a=-6, b = -abs(tstat))
+
+```
+
+
+## Using tidymodels
+
+- The **tidymodels** approach makes it easier to extract standard errors from fitted model objects.
+
+```{r}
+mr_fit = linear_reg() %>% 
+  set_engine("lm") %>% 
+  fit(log10(mass) ~ log10(radius), data = mr)
+
+mr_tidy = tidy(mr_fit)
+mr_tidy
+
+mr_tidy$std.error[2]
+
+mr_tidy %>% 
+  filter(str_detect(term, "radius")) %>% 
+  pull(std.error)
+
+```
+
+
+
+
+
+
+
+

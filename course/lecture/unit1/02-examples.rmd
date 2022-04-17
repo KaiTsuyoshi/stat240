@@ -1,0 +1,366 @@
+---
+output: html_document
+---
+
+## Base R Examples
+
+### Vectors
+
+- Most data in the course we will create by reading data in from a text file (.txt or .csv or .tsv), from Excel files (.xlsx or .xls), or, rarely, directly from a web site using a function to read tables from HTML.
+- But it is useful to know how to create a vector from scratch.
+- Here are several examples.
+- In each case below, the code creates a vector without assigning it to a name.
+    - The vector is created, printed to output, and not saved.
+
+#### Sequences
+
+- Use the colon operator to create sequences of integers
+- Notice in the output that each line begins with a label in square brackets which identifies the position of the first element of the vector on that line
+
+##### The colon operator
+
+```{r}
+## 1 through 10
+1:10
+
+## 20 through 100
+20:100
+
+## 10 to 1
+10:1
+
+## Negatives
+-2:5
+-10:-1
+```
+
+##### seq()
+
+- The function `seq()` allows more flexibility.
+    - The elements do not need to be integers
+    - The first arguments are `from` and `to`
+    - The third argument is `by`, which is the step size.
+    - You may also specify the desired length with `length.out`.
+    - You do not need to name the arguments if they are in order
+    - There are defaults (`from = 1`, `to = 1`, `by = ((to = from)/length.out))`
+    
+```{r}
+## default sequence from 1 to 1
+seq()
+
+## sequence from 1 to 10 by 0.5
+seq(1, 10, 0.5)
+
+## same, using named arguments
+seq(from = 1, to = 10, by = 0.5)
+
+## same, if named arguments, can be passed in any order
+seq(to = 10, by = 0.5, from = 1)
+
+## same, specifying the length
+seq(1, 10, length.out = 19)
+```
+    
+##### c()
+
+- The handy function `c()` combines arbitrary values into a vector
+
+```{r}
+c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+c(1:5, 10)
+
+c(1, 1, 2, 3, 5, 8, 13, 21)
+```
+
+### Assignment
+
+- The conventional symbol to assign a vector (or any other object in R) to a name is the two-character combination `<-` which looks like an arrow.
+
+```{r}
+v1 <- 1:10
+v1
+```
+
+- An alternative (which I prefer, but am in the minority) is the equal sign `=` which is conventional in most computer programming languages.
+
+```{r}
+v2 = 1:10
+v2
+```
+
+- Note that the equal sign has different meaning in different contexts.
+    - We use this symbol to assign values to arguments in function calls, as we saw before.
+    
+```{r}
+## The first = is assignment in creating an object
+## The second = is for naming an argument
+v3 = seq(1, 11, by = 2)
+v3
+```
+
+- Use whichever symbol you prefer.
+- It is better for readability of your code to be consistent with your choice.
+
+### Object names
+
+- Object names made be made up of lower case letters, `a-z`, upper case letters `A-Z`, digits `0-9`, and the symbols period `.` and under score `_`.
+    - R is case sensitive, so the names `a` and `A` are different.
+    - A valid name cannot begin with a number.
+    - As the period has special meaning in some contexts, I tend to avoid its use.
+    - A name which begins with a `.` is also good to avoid as these are conventionally reserved for special system variables and are hidden in the environment.
+    - You can override the naming conventions by wrapping a name between single back quotes
+    
+```{r}
+## trying to use an illegal name causes an error
+##1a = 10
+
+## a legal assignment
+a = 10
+
+## a legal assignment, but the variable does not appear in the environment
+.a = 10
+
+## Use the function ls() to list all objects
+## Note .a is not included
+ls()
+
+## Add an argument to show the hidden variables too
+## Who knew that .Random.seed was hanging around!
+ls(all.names = TRUE)
+```
+    
+### Arithmetic
+
+- In many computer languages, you need loops to work over vectors (or arrays) of value
+- In R, most of the language is *vectorized*, so you do not need explicit loops.
+- When doing conventional arithmetic with vectors, all of the calculations are done element by element.
+
+```{r}
+## two small example vectors
+a = 1:3
+b = 4:6
+a
+b
+
+## addition by element
+a + b
+
+## subtraction by element
+b - a
+
+## multiplication by element
+a*b
+
+## division by element
+a/b
+
+## exponentiation by element
+a^b
+```
+
+- If you wanted to take a dot product, you could multiply by elements and then sum the results
+
+```{r}
+## dot product
+sum(a*b)
+```
+
+- It is also common to do operations between a single number and a vector of numbers.
+- Effectively, the single number is replicated to be the same length as the vector and then the operations occur.
+
+```{r}
+s = 5
+s
+
+## addition
+a + s
+
+## subtraction
+a - s
+
+## multiplication
+a*s
+
+## division
+a/s
+s/a
+
+## exponentiation
+s^a
+a^s
+```
+
+#### Incompatible sizes
+
+- R allows vector arithmetic with incompatibly-sized vectors
+- The shorter vector is replicated to be the same length as the longer one.
+- If it does not work evenly, then a warning is produced.
+
+```{r}
+a
+d = 4:5
+d
+
+## adding a = c(1,2,3) and d = c(4,5)
+## d is changed to c(4,5,4), but the last repeat of 4,5 is stopped short
+## a warning is given as this was likely an error
+a + d
+```
+
+## Common functions
+
+- There are a number of common functions that act on each element of a vector individually.
+
+```{r}
+a
+
+## exp()
+exp(a)
+
+## natural log, log()
+log(a)
+
+## log base 10
+log10(a)
+log(1, base = 10)
+
+## trig functions
+## Note the use of the built in value pi
+## Ideal 0 may not be calculated exactly on a computer
+## When a number ends e-16, this is a shorthand for times 10^(-16)
+## Small numbers like this are effectively zero
+sin(a * pi)
+cos(a * pi)
+tan(a*pi)
+```
+
+- Other functions summarize a vector of numbers into a single summary value
+
+```{r}
+a
+
+## sum
+sum(a)
+
+## mean
+mean(a)
+
+## standard deviation
+## if you have had a stats course before....
+sd(a)
+
+## length
+length(a)
+
+## maximum
+max(a)
+
+## minimum
+min(a)
+
+## median
+median(a)
+
+## quantiles
+## there are many definitions of quantiles
+quantile(a, 0.2)
+quantile(a, 0.2, type = 3)
+
+```
+
+## Data types
+
+- R has several data types
+- Use the function `class()` to identify each
+
+```{r}
+## colon creates integers
+a = 1:3
+a
+class(a)
+
+## seq() creates numeric values
+b = seq(1,3,1)
+b
+class(b)
+
+## There are also character-valued vectors
+x = c("A", "B", "C")
+x
+class(x)
+
+## And logical
+y = c(TRUE, TRUE, FALSE)
+y
+class(y)
+```
+
+- There are several more types
+- We will see dates and times in a few weeks.
+
+- You cannot mix data types in a vector.
+- If you try, R will coerce the elements to be the same type
+
+```{r}
+d = c(1, 2, "A")
+
+## Note that the 1 and 2 were converted to character valued
+d
+```
+
+- You can change types of variables with a collection of functions with names like `as.integer()`, `as.numeric()`, `as.character()`
+
+```{r}
+b = seq(1,5)
+b
+class(b)
+
+bb = as.integer(b)
+bb
+class(bb)
+
+as.character(bb)
+```
+
+## Data frames
+
+- We will mostly examine data packaged into a data frame
+- Each column of a data frame is a vector
+- The elements of a vector must be the same, but vectors of different types may be in the same data frame
+- We will most often create data frames by reading in data from a file
+- But we can make these by hand too
+
+```{r}
+## LETTERS is a built in vector with the 26 capital letters
+## The square bracket operator takes a subset, here the first 10
+dat = data.frame(x = LETTERS[1:10], y = 1:10)
+dat
+class(dat)
+
+## Here are three ways to grab the vector that is the first column
+## The $ operator
+dat$x
+
+## Double square brackets (treats the data frame as a list of its columns)
+dat[[1]]
+dat[['x']]
+
+## Single brackets with a comma between dimensions
+## Blank keeps all
+dat[,1]
+```
+
+- We often want to know the dimensions (number of rows and columns) of a data frame
+
+```{r}
+dim(dat)
+nrow(dat)
+ncol(dat)
+```
+
+## Summary
+
+- There are many base R functions for dealing with data
+- We will focus moving forward on the tidyverse extension to R
+- The syntax is quite different, but underneath there are a lot of base R calculations on vectors happening

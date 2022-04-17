@@ -1,0 +1,386 @@
+---
+title: "Comparing Two Independent Means"
+author: "Bret Larget"
+output: html_document
+---
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the following data sets
+    - `COURSE/data/lizards.txt`
+
+- You will need the packages:
+    - **tidyverse**
+    - **scales**
+    - **tidymodels**
+    - **dotwhisker**
+
+- The code uses **readr** function `read_table()` which assumes a version number at least 2.0.0.
+    - If your **readr** version number is older, please update.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(tidymodels)
+library(dotwhisker)
+library(egg)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Horned Lizards
+
+- The horned lizard *Phrynosoma mcalli* has horns it uses for protection.
+- Researchers tested a hypothesis that longer horns are more protective then shorter horns.
+- A predator of these lizards is the loggerhead shrike,
+a bird that impales the lizards on thorns or barbed wire.
+- Researchers compared the horn lengths of 30 skewered lizards
+with 154 horned lizards that were living.
+- The average length of the skewered lizards was  21.99 mm
+and the average length of the living lizards was 24.28 mm.
+- This data set and background are from the textbook *The Analysis of Biological Data* by Michael Whitlock and Dolph Schluter
+
+> Is this evidence that longer horns are more protective?
+
+Here is a [You Tube video](https://www.youtube.com/watch?v=W_zfyAx_z_8) with background information.
+
+### Read the data
+
+```{r}
+lizards = read_table("../../data/lizards.txt")
+
+readr::spec(lizards)
+```
+
+### Explore
+
+- Here, we have two independent samples
+- Will make side-by-side box plots and overlay the actual points
+   - We set `coef=Inf` so that single points are not labeled as outliers
+   - As we plot all points individually, it is distracting and misleading to plot the outliers twice
+   
+```{r}
+ggplot(lizards, aes(x = survival, y = hornLength, fill = survival)) +
+  geom_boxplot(coef = Inf, alpha = 0.5) +
+  geom_point(position = position_jitter(width=0.3, height=0)) +
+  xlab("Survival") +
+  ylab("Horn length (mm)") +
+  ggtitle("Comparison of lizard horn lengths") +
+  theme_minimal() 
+```
+   
+- The visual evidence is that there is a mean difference between the horn lengths of these two groups of lizards.
+
+### Populations and Samples
+
+- The populations are the individual horn lizards who live in the area where the study was conducted and at that time
+    - Those killed by shrikes are one population
+    - Those alive are another population
+- The samples are the lizards in the data set
+
+### Model
+
+- We have two independent samples
+- Treat the data as randomly sampled from larger populations.
+
+$X_i \sim F_1(\mu_1, \sigma_1), \quad i = 1, \ldots, n_1$    
+$Y_i \sim F_2(\mu_2, \sigma_2), \quad i = 1, \ldots, n_2$    
+
+### Estimates from Summary Data
+
+*Do this calculation live*
+
+```{r}
+
+```
+
+
+
+
+#### Solution 
+
+```{r}
+lizards_sum = lizards %>% 
+  group_by(survival) %>% 
+  summarize(n = n(),
+            mean = mean(hornLength),
+            sd = sd(hornLength))
+
+lizards_sum
+```
+
+> Find a 95% Confidence Interval for $\mu_1 - \mu_2$
+
+*Do these calculations live*
+
+```{r}
+## use t.test()
+## note that there is an unusual degrees of freedom value
+
+```
+
+```{r}
+## manually, using df from above
+
+```
+
+
+Interpretation
+
+
+
+
+#### Solution
+
+```{r}
+## use t.test()
+x = lizards %>% 
+  filter(survival == "Living") %>% 
+  pull(hornLength)
+
+y = lizards %>% 
+  filter(survival == "Killed") %>% 
+  pull(hornLength)
+
+t.test(x, y)
+```
+
+## Interpretation
+
+> We are 95% confident that the mean length of horns among living horn lizards is between 1.21 and 3.38 mm longer than the mean length of horns among horned lizards killed by the loggerhead shrike.
+
+### Estimated Degrees of Freedom
+
+- The default method in `t.test()` does not assume that $\sigma_1 = \sigma_2$.
+- The theory is then based on the test statistic
+
+$$
+t = \frac{\bar{X} - \bar{Y}}{\sqrt{\frac{s_x^2}{n_x} + \frac{s_y^2}{n_y}}}
+$$
+
+- Under ideal sampling assumptions (independence and normal populations), this distribution **does not** have an exact t distribution.
+- However, a result from mathematical statistics says that it has an approximate t distribution where the degrees of freedom may be estimated from the data.
+- The formula is a bit complex, but it will always fall between the minimum of the two single-sample degrees of freedom, $n_x-1$ and $n_y-1$
+and their sum $n_x + n_y - 2$
+    - If:
+        - the sample sizes are not too different
+        - and the sample standard deviations are not too different
+    - then, the estimated degrees of freedom is near the sum $n_x + n_y - 2$.
+    
+- If one is willing to assume that $\sigma_1 = \sigma_2$, then the data from both samples may be pooled together to estimate a common value of $\sigma$.
+- Under this stronger assumption, the degrees of freedom is exactly $n_x + n_y - 2$.
+- Here is the pooled standard deviation calculation.
+    - This is the square root of the weighted average of the sample variances, weighted by their degrees of freedom.
+
+$$
+s_p = \sqrt{ \frac{n_x - 1}{n_x + n_y - 2}s_x^2 + 
+             \frac{n_y - 1}{n_x + n_y - 2}s_y^2 }
+$$
+
+Using the equation for the sample standard deviation, this evaluates to
+
+$$
+s_p = \sqrt{ \frac{\sum_{i=1}^{n_x} (x_i - \bar{x})^2 +
+                   \sum_{i=1}^{n_y} (y_i - \bar{y})^2}
+                   {n_x + n_y - 2} }
+$$
+
+which is the total sum of all residuals over the combined degrees of freedom.
+
+- We can do this calculation with `t.test()` too.
+
+```{r}
+t.test(x, y, var.equal = TRUE)
+```
+
+## Hypothesis Test
+
+- State Hypotheses
+
+```{r}
+
+```
+
+- Calculate the test statistic
+
+
+```{r}
+
+```
+
+- Calculate the p-value
+ 
+```{r}
+
+```
+ 
+- Interpret in context
+
+
+
+
+
+
+#### Solution
+
+$H_0: \mu_1 = \mu_2$    
+$H_a: \mu_1 \neq \mu_2$
+
+$t = \frac{\bar{x} - \bar{y}}{\text{SE}(\bar{x} - \bar{y})}$
+
+```{r}
+t.test(x,y)
+```
+
+
+
+```{r}
+## manual
+n_x = length(x)
+n_y = length(y)
+
+se = sqrt(var(x)/n_x + var(y)/n_y)
+
+tstat = (mean(x) - mean(y)) / se
+
+pvalue = 2*pt(-abs(tstat), 40.372)
+
+n_x
+n_y
+se
+tstat
+pvalue
+
+## Welch formula for df
+welch_df = function(x, y)
+{
+  n1 = length(x)
+  n2 = length(y)
+  v1 = var(x)/n1
+  v2 = var(y)/n2
+
+  return ( (v1 + v2)^2 / (v1^2/(n1-1) + v2^2/(n2-1) ) )
+}
+
+welch_df(x,y)
+```
+
+## Simulation
+
+**If time permits, explore confidence intervals and hypothesis tests with simulation.**
+
+### Confidence Interval by Simulation
+
+
+```{r}
+
+```
+
+
+
+
+
+
+#### Solution
+
+- A large number of times:
+    - resample each sample;
+    - calculate sample means;
+    - take the difference
+- Use the standard deviation of this difference as an estimate of the standard error
+- Create a confidence interval with a multiplier from the normal distribution.
+
+```{r}
+## # of simulations
+B = 100000
+
+## Assume we have samples x and y with lengths n_x and n_y
+sim_diffs = 1:B %>% 
+  map_dbl(~{
+    x_sim = sample(x, replace = TRUE)
+    y_sim = sample(y, replace = TRUE)
+    return ( mean(x_sim) - mean(y_sim) )
+  })
+
+se_sim = sd(sim_diffs)
+z = qnorm(0.975)
+ci = mean(x) - mean(y) + c(-1,1)*z*se
+ci
+```
+
+> We are 95% confident that the mean length of horns among living horn lizards is between `r round(ci[1],2)` and `r round(ci[2],2)` mm longer than the mean length of horns among horned lizards killed by the loggerhead shrike.
+
+- Note these differences are slightly different than the `t.test()` method above as we used a multiplier from the standard normal instead of the t distribution.
+
+### Hypothesis Test by Simulation
+
+**If time permits, explore confidence intervals and hypothesis tests with simulation.**
+
+
+
+
+
+
+
+#### Solution
+
+$H_0: \mu_1 = \mu_2$    
+$H_a: \mu_1 \neq \mu_2$
+
+- Test statistic is the difference in sample means.
+
+```{r}
+d = mean(x) - mean(y)
+d
+```
+
+- Under the simulation, we need to sample data from a distribution where the null hypothesis is true
+- There are may ways to adjust the real data to make this true by adding or subtracting a constant from one or both samples
+- It does not matter which we choose
+- One approach is to set each mean to the grand mean of all sampled values
+
+```{r}
+gm = mean(c(x,y))
+gm
+x_adj = x - mean(x) + gm
+y_adj = y - mean(y) + gm
+```
+
+- Then, simulate the difference in sample means as we did for confidence intervals
+
+```{r}
+## # of simulations
+B = 100000
+
+## Assume we have samples x and y with lengths n_x and n_y
+sim_diffs = 1:B %>% 
+  map_dbl(~{
+    x_sim = sample(x_adj, replace = TRUE)
+    y_sim = sample(y_adj, replace = TRUE)
+    return ( mean(x_sim) - mean(y_sim) )
+  })
+```
+
+- Then, calculate how often the simulated difference in sample means is as large as or greater than the absolute difference of the true samples
+
+```{r}
+p_value = mean( abs(sim_diffs) >= abs(d) )
+p_value
+```
+
+- Only three times out of 100,000 (could change if we resample again).
+
+- Interpretation
+
+> There is very strong evidence that the mean horn length of living horned lizards is larger than the mean horn length of lizards killed by the loggerhead shrike in the area of the study ($p < 0.0001$, two-sided non-parametric bootstrap simulation test).
+

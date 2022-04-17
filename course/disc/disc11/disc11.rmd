@@ -1,0 +1,163 @@
+---
+title: "STAT 240 Discussion 11 Solution"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+library(tidyverse)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Assignment Completion
+
+If your group does not complete the assignment during discussion,
+find time to work together outside of class to finish the assignment.
+
+Group 311C: William Fan, Jason Fu, Fei Qin, Nihar Simhadri, Kai Tsuyoshi
+
+## Data
+
+The data set `boston-marathon-2010-sample.csv` contains a random sample of 50 men and 50 women, aged 35--39, who ran in and completed the 2010 Boston Marathon.
+Times are in minutes.
+
+```{r}
+bm = read_csv("../../data/boston-marathon-2010-sample.csv")
+```
+
+## Problems
+
+The questions in this discussion assignment use a subset of the 2010 Boston Marathon data set described above.
+
+### Problem 1
+
+Display the data using side-by-side boxplots with the sex of the competitor on the x axis and their time on the y axis.
+Add an appropriate title and axis labels to the plot.
+
+```{r}
+ggplot(bm, aes(x = Sex, y = Time)) +
+  geom_boxplot() +
+  ggtitle("Distribution of Marathon Times based on Sex") +
+  xlab("Sex") +
+  ylab("Time (in Minutes")
+```
+
+### Problem 2
+
+Create and display a table with a numerical summary of the table.
+Calculate the sample size, mean time, standard deviation of the times, and standard error of the mean ($s_x/\sqrt{n}$) separately for each sex.
+This table will have one row for each sex.
+
+```{r}
+tbl = bm %>% 
+  group_by(Sex) %>% 
+  summarize(n = n(), mean = mean(Time), sd = sd(Time), se = sd/sqrt(n))
+
+tbl
+```
+
+
+### Problem 3
+
+Using the function `t.test()`, construct separate 95% confidence intervals for each sex for the mean time to complete the 2010 Boston Marathon among all competitors of that sex aged 35--39.
+
+```{r}
+# male
+x = bm %>% 
+  filter(Sex == "male") %>% 
+  select(Time)
+
+
+t.test(x)
+```
+
+
+
+```{r}
+# female
+  y = bm %>% 
+  filter(Sex == "female") %>% 
+  select(Time)
+
+
+t.test(y)
+```
+
+### Problem 4
+
+Without using the function `t.test()` write code to calculate the end points of the 95% confidence interval for the mean time for women aged 35--39 to complete the 2010 Boston Marathon.
+$$
+t = \frac{\bar{X} - \bar{Y}}{\sqrt{\frac{s_x^2}{n_x} + \frac{s_y^2}{n_y}}}
+$$
+
+```{r}
+t_mult = qt(0.975, 50-1)
+
+female_mean = tbl %>%
+  filter(Sex == "female") %>% 
+  select(mean)
+
+female_se = tbl %>%
+  filter(Sex == "female") %>% 
+  select(se)
+
+ci = c(female_mean - t_mult * female_se, female_mean + t_mult * female_se)
+ci
+
+
+
+```
+
+### Problem 5
+
+Write an interpretation of the confidence interval from the previous problem in context, following course examples.
+
+For the sample size of n = 50, we are 95% confident that the mean time for women aged 35--39 to complete the 2010 Boston Marathon is between 230.7 minutes and 253.2 minutes.
+
+### Problem 6
+
+Test the hypothesis that the mean times are equal for men and women to complete the 2010 Boston Marathon among runners aged 35--39 versus the two-sided alternative that they are not.
+
+1. Define parameters and a model
+2. State hypotheses
+3. Use `t.test()` to do calculations of the test statistic and p-value.
+
+```{r}
+female_mean = bm %>%
+  filter(Sex == "female") %>% 
+  select(Time)
+male_mean = bm %>%
+  filter(Sex == "male") %>% 
+  select(Time)
+difffe=female_mean-male_mean
+meand=mean(difffe$Time)
+result=t.test(difffe, mu=meand)
+result
+```
+
+### Problem 7
+
+Interpret the results of this hypothesis test in context, following examples from lecture.
+
+There is not enough evidence that disproves the hypothesis.
+
+### Problem 8
+
+Create a graph using functions from `ggprob.R` to graph the t distribution which is the null distribution of the test statistic.
+Shade the area under the curve that represents the p-value and add a vertical dashed line at the location of the test statistic.
+
+```{r}
+gt(df = 49, a = 17, b = 40) +
+  geom_t_fill(df = 49, a = 28.584, b = 40) +
+  geom_vline(xintercept = 28.584, color = "red", linetype = "dashed") +
+  xlab("t") +
+  theme_minimal()
+```
+
+
+
+
+
+
+

@@ -1,0 +1,350 @@
+---
+title: "Text Analysis with stringr"
+author: "Bret Larget"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Lecture based on notes by Jessi Kehe
+
+### Setup details
+
+- You will need the packages **tidyverse** and **stringr** for this lecture. (**stringr** should load with **tidyverse**, but if not, run `library(stringr)` separately)
+
+- We will also be using the packages **gutenbergr** and **tidytext** in order to obtain some data so be sure to install them before moving forward.
+
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
+                      cache=TRUE, autodep=TRUE,
+                      cache.comments=FALSE)
+library(tidyverse)
+library(gutenbergr)
+library(tidytext)
+## viridis colors
+source("../../scripts/viridis.R")
+```
+
+## Overview
+
+- We are going to explore a text from **gutenbergr**, which is an R package that provides an interface for downloading public domain texts in the Project Gutenberg collection.  
+
+## Data: gutenbergr
+
+- The library **gutenbergr** contains several hidden data frames with information about a number of texts in the Project Gutenberg collection.
+- One is named `gutenberg_metadata`.
+- We can access it with the `data()` command
+
+```{r}
+data("gutenberg_metadata")
+```
+
+
+```{r data}
+## Look at the structure of the gutenberg meta data
+str(gutenberg_metadata)
+
+## And column names
+names(gutenberg_metadata)
+```
+
+- Look at the first several titles
+
+```{r gutenbergr-titles}
+gutenberg_metadata %>%
+  select(title)
+```
+
+- With over 50,000 texts it would be hard to look through to find a text we want.  
+- Fortunately we have `dplyr` and `stringr` to help us!
+
+- Let's find a title of a text... How about Huck Finn?  Now what is the full title?
+- I can't remember.  Instead, let's do a search for `huck` and see if we can find a match.
+
+```{r huck}
+gutenberg_metadata %>%
+  filter(str_detect(title, "huck")) %>% 
+  select(gutenberg_id, title, author)
+```
+
+- Weird, this classic seems to not be in here.  Maybe some letters should be capitalized?
+
+```{r huck-2}
+gutenberg_metadata %>%
+  select(gutenberg_id, title, author) %>%
+  filter(str_detect(title, "(?i)huck" )) # (?i) makes it match case insensitive
+```
+
+- There it is!  Let's grab the work using `gutenberg_id = 76`
+
+```{r}
+huck = gutenberg_download(76)
+head(huck)
+```
+
+- We see that the format of the downloaded text is a tibble with two columns.
+    - `gutenberg_id`: the same value, 76, for all cases
+    - `text`: text of the entire book, including foreward material
+- The text of the entire book is broken into multiple lines.
+
+## Louisa May Alcott
+
+- Find the titles of all books written by Louisa May Alcott
+
+```{r get-lw}
+alcott = gutenberg_metadata %>%
+  select(gutenberg_id, title, author, gutenberg_author_id) %>%
+  filter(str_detect(author, "(?i)alcott"))
+```
+
+- There are multiple authors with the name Alcott.
+- Select those with `author_id == 102`
+
+```{r}
+alcott = gutenberg_metadata %>%
+  select(gutenberg_id, title, author, gutenberg_author_id) %>%
+  filter(gutenberg_author_id == 102)
+
+count(alcott)
+
+alcott %>% 
+  distinct(title) %>% 
+  count()
+```
+
+- There are 50 titles here under her name, but there are some repeats (only 46 unique book titles).
+
+## Little Women
+
+- *Little Women* is a classic in American literature found on many lists of such titles
+    - [Here is one!](https://www.goodreads.com/shelf/show/classic-american-literature)
+    
+```{r}
+## We will look at little women
+gutenberg_metadata %>%
+  filter(str_detect(title, "^(?i)little women$"))
+
+## gutenberg_id = 514...
+## The other option does not seem to have a text available
+lw_orig = gutenberg_download(514)
+```
+
+
+> Make a data frame with a chapter index, chapter titles, and the text
+
+- We will represent the entire book with one row per chapter:
+    - A chapter index with numerical values of the chapters
+    - A text variable with the chapter titles
+    - A text variable with the entire text of the corresponding chapter
+- We will discard the foreword portion of the book.
+
+## First, get the chapter names in a data frame
+
+- By inspection, we see the first 69 lines contains foreword information.
+- The chapter titles are in rows 14--66, if we eliminate rows with `text` that begin `PART` or blank lines.
+
+```{r chapters}
+## Get chapter names
+chapter_names = lw_orig %>%
+  select(text) %>%
+  slice(14:69) %>%
+  filter(!str_detect(text, "PART")) %>% 
+  filter(!(text == ""))
+
+chapter_names %>% 
+  pull(text)
+```
+
+- This is not quite what we wanted....
+- The chapter names contain extra spaces at the start
+    - It looks like this is done so that the names of the chapters all begin at the same position.
+- We can remove these with the `str_trim()` function which removes white space at the start and end of each string.
+- The function `str_squish()` also eliminates multiple adjacent spaces.
+
+```{r chapters-2}
+## Get chapter names, take 2
+chapter_names = lw_orig %>%
+  select(text) %>%
+  slice(14:69) %>%
+  filter(!str_detect(text, "PART")) %>% 
+  filter(!(text == "")) %>% 
+  mutate(text = str_trim(text))
+
+chapter_names %>% 
+  pull(text)
+```
+
+- Next, it would be nice to separate each chapter name from its number
+- Each number is separated from the chapter name by two spaces
+- Use `separate()`
+- Then, we can also add a numerical index
+
+```{r}
+## chapter names, take 3
+chapter_names = lw_orig %>%
+  select(text) %>%
+  slice(14:69) %>%
+  filter(!str_detect(text, "PART")) %>% 
+  filter(!(text == "")) %>% 
+  mutate(text = str_trim(text)) %>% 
+  separate(text, into = c("chapter_number", "chapter_title"), sep = "  ") %>% 
+  mutate(chapter_index = row_number()) %>% 
+  relocate(chapter_index)
+
+chapter_names %>% 
+  print()
+```
+
+## Wrangling the text
+
+- After the foreword section, the text uses several rows for each chapter.
+    - For example, Chapter 1 begins on row 70 with `CHAPTER ONE`
+    - There is a blank line followed by the chapter title.
+    - Then another blank line followed by the chapter broken into many rows with each paragraph on one or more rows, broken in odd ways, and blank lines in between.
+
+```{r}
+lw_orig %>% 
+  slice(70:80)
+```
+
+- We will capture all of the text after the foreword into a single very long text string
+- Then, we will use the function `str_split()` with the key word "CHAPTER" to break the long text string into a data frame with text from one row per chapter
+- Next, a little clean-up and organization.
+- Finally, join with the `chapter_names` data frame made earlier.
+    
+### Remove foreword and collapse
+    
+```{r}
+## Collapse the text into one string
+lw = lw_orig %>% 
+  slice(-c(1:69)) %>% # remove header content
+  select(text) %>%
+  filter(!str_detect(text,"^$")) %>% #remove the empty strings
+  summarize(full = str_c(text, collapse = " ")) 
+
+dim(lw)
+length(lw$full)
+str_length(lw$full)
+```
+
+### Split the text
+
+```{r}
+## Split the text into a string for each chapter
+## Add a chapter index
+lw_text = tibble(
+  text = str_split(lw, "CHAPTER ") %>%
+    unlist()) %>% 
+  ## remove the extra first row
+  slice(-1) %>% 
+  ## add the index
+  mutate(chapter_index = row_number()) %>% 
+  relocate(chapter_index)
+
+dim(lw_text)
+
+## # of characters per chapter
+lw_text %>% 
+  mutate(n = str_length(text)) %>% 
+  pull(n)
+```
+
+#### Join
+
+```{r}
+lw = chapter_names %>% 
+  left_join(lw_text)
+```
+
+#### Clean up
+
+- Each chapter text begins with:
+    - the all-caps chapter number
+    - followed by the all-caps chapter title
+- As we have the number and title, we can count characters and remove the correct number from each title
+
+```{r}
+## Add 3 to account for the spaces
+lw = lw %>% 
+  mutate(text = str_sub(text,
+                        start = str_length(chapter_number) +
+                          str_length(chapter_title) + 3,
+                        end = -1))
+```
+
+## Analysis
+
+> Get the number of times the main characters' names appear by chapter
+
+- The main characters in Little Women are the sisters Amy, Beth, Jo, and Meg, and the neighbor boy Laurie.
+
+```{r chapters-plot}
+main = lw %>%
+  mutate(Amy = str_count(text,"Amy")) %>%
+  mutate(Beth = str_count(text,"Beth")) %>%
+  mutate(Jo = str_count(text,"Jo")) %>%
+  mutate(Laurie = str_count(text,"Laurie")) %>%
+  mutate(Meg = str_count(text,"Meg")) 
+```
+
+- Next we will create a plot that displays the cumulative number of times the main characters are mentioned by chapter.
+- In order to more easily color lines according to the characters, we will:
+    - put the `main` data frame in long form.
+    - add a cumulative count variable
+
+```{r}
+main_long = main %>%
+  pivot_longer(cols = Amy:Meg,
+               names_to = "character",
+               values_to="count") %>% 
+  group_by(character) %>% 
+  mutate(cumsum = cumsum(count)) %>% 
+  ungroup()
+```
+
+
+```{r}
+ggplot(main_long, aes(x = chapter_index, y = cumsum, color = character)) +
+  geom_line()+
+  xlab("Chapter number") +
+  ylab("Cumulative count")+
+  labs(color = "Character") +
+  ggtitle("Little Women Main Characters")
+```
+
+### Interpretations
+
+- Can this graphic help us to understand anything about the plot?
+
+- A few observations:
+    - Jo is the principal character and her name appears regularly throughout the chapters
+    - With a careful eye, we see that the lines for Amy and Laurie are nearly parallel toward the end of the book, suggesting that they are mentioned together most of the time
+        - In fact, they get married to each other
+    - Meg's curve is seldom mentioned after about chapter 28
+        - In fact, she get married to someone else and drops out of the story
+
+### Another plot
+
+```{r}
+ggplot(main_long, aes(x = character, y = count, fill = character)) +
+  geom_col() +
+  facet_wrap( ~ chapter_index) +
+  xlab("") +
+  ylab("Count") +
+  ggtitle("Little Women Main Characters",
+          subtitle = "Counts by Chapter") +
+  scale_x_discrete(labels = NULL)
+```
+
+
+
+
+
+
+
+
+
+
+
+

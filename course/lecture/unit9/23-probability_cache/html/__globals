@@ -1,0 +1,20 @@
+continuous-examples	aes	c	geom_line	geom_segment	ggplot	ggtitle	gnorm	paste0	rep	scale_x_continuous	seq	tibble	x	xlab	xlim	y	ylab	ylim
+discrete-examples	gbinom
+unnamed-chunk-1	%>%	c	kable	kable_styling	mutate	p	pivot_wider	relocate	tibble	x
+unnamed-chunk-2	!=	%>%	~	c	case_when	filter	kable	kable_styling	mutate	p	pivot_wider	pull	relocate	sum	sum_p	summarize	x
+unnamed-chunk-3	$	prob1	sum
+unnamed-chunk-4	%>%	mutate	p	prob1	sum	summarize	x	xp
+unnamed-chunk-5	^	mu	p	sqrt	sum	x
+unnamed-chunk-6	%>%	^	mu	mutate	p	prob1	sigma2	sqrt	sum	summarize	v	x
+unnamed-chunk-7	aes	geom_hline	geom_segment	ggplot	ggtitle	p	prob1	x	ylab
+unnamed-chunk-8	c	geom_vline	mu	plot1	sigma
+unnamed-chunk-9	&	<=	>=	mu	p	sigma	sum	x
+unnamed-chunk-10	&	%>%	<=	>=	filter	mu	p	prob1	sigma	sum	summarize	x
+unnamed-chunk-11	abs	sum	tibble
+unnamed-chunk-12	%>%	abs	mutate	p	sum	tibble	x
+unnamed-chunk-13	aes	geom_hline	geom_segment	ggplot	p	prob7	x
+unnamed-chunk-14	%>%	^	mutate	p	prob7_2	pull	sqrt	sum	summarize	v	x	xp
+unnamed-chunk-15	&	%>%	<=	>=	filter	mu	p	prob7_2	sigma	sum	summarize	x
+unnamed-chunk-16	c	dunif	tibble	x
+unnamed-chunk-17	aes	c	dunif	f	geom_hline	geom_line	geom_ribbon	ggplot	ggtitle	scale_x_continuous	seq	tibble	x	ylab
+unnamed-chunk-18	^	mean	return	runif	sd	tibble

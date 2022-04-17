@@ -1,0 +1,19 @@
+unnamed-chunk-1	B	binomial_example	n	p	.Random.seed
+unnamed-chunk-2	
+unnamed-chunk-3	
+binomial-graphs	binomial_plots	n_options	p_options
+binomial-calc	k	n	p
+rbinom	n	p	x
+dbinom	
+dbinom-plot	
+pbinom	
+qbinom	
+unnamed-chunk-4	mu	n	p	sigma
+unnamed-chunk-5	
+unnamed-chunk-6	
+unnamed-chunk-7	
+unnamed-chunk-8	prob7
+unnamed-chunk-9	prob7
+unnamed-chunk-10	
+unnamed-chunk-11	prob8
+unnamed-chunk-12	

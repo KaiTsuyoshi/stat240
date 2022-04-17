@@ -1,0 +1,12 @@
+unnamed-chunk-1	col_character	col_date	col_double	cols	dim	head	read_csv
+unnamed-chunk-2	%>%	DATE	ELEVATION	LATITUDE	LONGITUDE	mw_original	NAME	PRCP	rename	SNOW	SNWD	STATION	TAVG	TMAX	TMIN
+unnamed-chunk-3	%>%	mutate	name	recode
+unnamed-chunk-4	%>%	as.numeric	date	elevation	first_date	group_by	last_date	latitude	longitude	max	min	mw	n	name	possible	select	station	summarize
+unnamed-chunk-5	&	%>%	<	==	|	arrange	date	filter	name	prcp	select	snow	snow_depth	tavg	tmax	tmin	ymd
+unnamed-chunk-6	%>%	as.numeric	date	first_date	group_by	last_date	max	min	n	name	official	possible	select	summarize
+unnamed-chunk-7	%>%	full_join	nrow	rm	seq	tibble	ymd
+unnamed-chunk-8	is.na	return	sum
+unnamed-chunk-9	%>%	count_na	official	prcp	snow	snow_depth	summarize	tavg	tmax	tmin
+unnamed-chunk-10	%>%	date	drop_na	min	name	official	select	snow	snow_depth	summarize
+unnamed-chunk-11	%>%	mutate	tmax	tmin
+unnamed-chunk-12	official	write_csv

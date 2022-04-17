@@ -1,0 +1,214 @@
+---
+title: "Getting Started with Relational Data"
+author: "Bret Larget"
+output: html_document
+---
+
+- Professor Jessi Kehe contributed to these lecture notes
+
+### Setup details
+
+- You will need the packages **tidyverse**, **lubridate**, **nasaweather** for this lecture. 
+
+- Be sure to read R4DS Chapter 13 for information on relational data
+
+- We are going to consider a few simple examples to help you get started with relational data.
+- Practice on more complicated examples will come during the lectures and as the semester progresses.
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE,
+                      autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(lubridate)
+library(nasaweather)
+```
+
+## Primary Key
+
+- A *primary key* for a data frame are the variable or variables that uniquely identify an observation.
+
+- Let's try to find the primary key in the `nasaweather::atmos` data.  We will begin by running `?nasaweather::atmos` for details on the data, which may provide some hint at a primary key.
+- When using `count()` on a variable or collection of variables that are a primary key, all counts should be equal to one.
+
+### Help for Atomosphere Data
+
+```{r}
+##
+?nasaweather::atmos
+
+atmos = nasaweather::atmos
+class(atmos)
+dim(atmos)
+names(atmos)
+```
+
+### Seek a primary key
+
+> Is `temp` a primary key to the `atmos` data set?
+
+```{r}
+## temp
+atmos %>% 
+  count(temp) %>% 
+  filter(n > 1)
+```
+
+- Not a primary key: many cases have the same temperature
+
+> Is the pair (`lat`, `lon`) a primary key to the `atmos` data set?
+
+```{r}
+## lat (latitude) and long (longitude)
+atmos %>% 
+  count(lat, long) %>% 
+  filter(n > 1)
+
+## Looks like each latitude longitude pair appears 72 times
+atmos %>% 
+  count(lat, long) %>% 
+  filter(n != 72)
+```
+
+- The location variables, `lat` and `long` do not form a primary key.
+
+> Is the pair (`year`, `month`) a primary key to the `atmos` data set?
+
+```{r}
+## year and month
+atmos %>% 
+  count(year, month) %>% 
+  filter(n > 1)
+
+atmos %>% 
+  count(year, month) %>% 
+  filter(n != 576)
+```
+
+- The time variable pair, `year` and `month` also do not form a primary key.
+    - There are 576 measurements at each distinct time.
+    
+> Is the set (`year`, `month`, `lat`, `lon`) a primary key to the `atmos` data set?
+
+```{r}
+## Look at time and location together
+atmos %>% 
+  count(lat, long, year, month) %>% 
+  filter(n > 1)
+```
+
+- There is only a single observation at each location and time
+
+## Mutating joins
+
+- We were introduced to joins earlier during our introduction to dplyr,
+but we will consider another example here.
+
+- Consider the following two data frames. 
+
+```{r drinks-discounts}
+drinks = tibble(
+  Drink = c("Milk Tea", "Espresso", "Latte", "Espresso"),
+  Cafe = c("Happy Tea", "Daily Grind", "Daily Grind", "Bev's Beverages"),
+  Price = c(4, 2, 3, 2)
+)
+
+drinks
+
+discounts = tibble(
+  Coupon = c("25%", "50%", "5%"),
+  Location = c("Happy Tea", "Daily Grind", "The Roast")
+)
+
+discounts
+```
+
+- Note that the value in `Cafe` from data frame `drinks` and `Location` from data frame `discounts` have overlapping values and will be the basis of joining the two data sets together.
+    - Often, the name or names of the columns on which to join are the same.
+- Note that the syntax for joining by columns with different names is:
+    - `by = c("name from data set 1" = "name from data set 2")
+    - The quotes are needed as `c()` is a base R function so the **tidyverse** syntax that allows variable names to be written without the quotes does not hold within `c()`    
+
+### Inner join
+
+- An inner join keeps all cases present in both data sets.
+- Note that we use the **tidyverse** idiom of `data set 1 %>% *_join(date set 2, ...)`
+    - An alternative would be `*_join(data set 1, data set 2, ...)`
+    
+```{r}
+drinks %>% 
+  inner_join(discounts, by = c("Cafe" = "Location"))
+```
+
+- Notice that when two different column names are used to match for joining, the name of the first data frame is retained.
+
+### Full join
+
+- A full join keeps all cases from each data frame
+
+```{r}
+drinks %>% 
+  full_join(discounts, by = c("Cafe" = "Location"))
+
+
+drinks %>% 
+  full_join(discounts, by = c("Cafe" = "Location"), keep=TRUE)
+```
+
+- Missing values are added where data is missing from one data frame or the other
+- Notice that the argument `keep = TRUE` retains both joining variables
+
+### Left join
+
+- A left join keeps all cases from the first data frame and adds new columns from the second
+
+    
+```{r}
+drinks %>% 
+  left_join(discounts, by = c("Cafe" = "Location"))
+```
+
+- Typically, a left join retains the number of rows from the first data frame
+    - More rows could be added if there were multiple matches from the second data frame to a single row of the first.
+
+### Right join
+
+- A right join keeps all rows from the second data frame and adds columns from the first.
+
+```{r}
+drinks %>% 
+ right_join(discounts, by = c("Cafe" = "Location"))
+```
+
+## Filtering joins
+
+- Filtering joins also look to match observations between the two data frame, but focus on the observations instead of the variables. 
+
+- There are two filtering joins:  `semi_join()` and `anti_join()`.  
+
+### Semi-join
+
+- `semi_join()` returns all observations of `drinks` with a match in `discounts`
+- this is a useful way to filter observations which match one of several values for a specific variable
+- the columns in the returned table are the same as in the first data set
+
+```{r filtering-joins}
+drinks %>% 
+  semi_join(discounts, by = c("Cafe" = "Location"))
+
+discounts %>% 
+  semi_join(drinks, by = c("Location" = "Cafe"))
+```
+
+### Anti joins
+
+- `anti_join()` returns all observations of drinks that do *not* have a match in discounts
+- this is another way to filter rows
+
+```{r}
+drinks %>% 
+  anti_join(discounts, by = c("Cafe" = "Location"))
+
+discounts %>% 
+  anti_join(drinks, by = c("Location" = "Cafe"))
+```
+

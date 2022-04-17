@@ -1,0 +1,14 @@
+normal-density	geom_norm_density	gnorm	theme_minimal
+unnamed-chunk-1	geom_norm_fill	gnorm	pnorm	theme_minimal
+unnamed-chunk-2	geom_norm_fill	gnorm	pnorm	theme_minimal
+unnamed-chunk-3	geom_norm_fill	gnorm	pnorm	theme_minimal
+unnamed-chunk-4	geom_norm_fill	gnorm	pnorm	theme_minimal
+unnamed-chunk-5	gnorm	theme_minimal
+unnamed-chunk-6	geom_norm_fill	gnorm	pnorm	theme_minimal
+unnamed-chunk-7	c	qnorm
+unnamed-chunk-8	%>%	~	ggarrange	length	map	p
+simple-normal	pnorm	qnorm
+normal-approx-good	gbinom	geom_norm_density	sqrt	theme_minimal
+normal-approx-good-graphs	::	aes	binomial_prob	binomial_tail	dbinom	geom_hline	geom_point	ggplot	ggtitle	k	mu	n	normal_prob	normal_tail	p	pbinom	pnorm	scale_y_continuous	sigma	theme_minimal	tibble	xlab	ylab
+normal-approx-bad	gbinom	geom_norm_density	sqrt	theme_minimal
+normal-approx-bad-graphs	::	aes	binomial_prob	binomial_tail	dbinom	geom_hline	geom_point	ggplot	ggtitle	k	mu	n	normal_prob	normal_tail	p	pbinom	pnorm	scale_y_continuous	sigma	theme_minimal	tibble	xlab	ylab

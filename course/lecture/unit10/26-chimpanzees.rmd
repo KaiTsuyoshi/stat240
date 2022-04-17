@@ -1,0 +1,636 @@
+---
+title: "Chimpanzees Analysis"
+author: "Bret Larget"
+output: html_document
+---
+This R Markdown document includes contributions by Professor Jessi Kehe.
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\Var}{\mathsf{Var}}
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the chimpanzee data
+    - `COURSE/data/chimpanzee.csv`
+
+- You will need the package `tidyverse` for these lectures.  
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+
+## Chimpanzee Data Introduction
+
+- Chimpanzees were studied in a pro-social choice experiment.
+    - Chimpanzees are given a sequence of choices about which color token to select.
+    - One color (labeled selfish) results in them getting food.
+    - Another (labeled pro-social) results in both them and a partner chimp receiving food.
+    - In a control setting, there is no partner
+        - different color choices result in the researcher mimicking the same actions as when partner is present (i.e., always giving the actor chimp food, making a motion with food toward the empty room for the partner chimp).
+- We will develop a statistical model for this experiment.
+- Each session of the experiment includes a series of 30 trials where one of two outcomes is possible.
+
+
+## Inference questions
+
+- How often does the actor chimpanzee make the pro-social choice? How much uncertainty is there in this estimate? How confident can we be that the long-run probability of making the pro-social choice in repeated trials falls within some interval?
+- Do chimps make the pro-social choice more than 50 percent of the time, or is the pro-social choice made at random?
+- Does the frequency with which the chimpanzee makes the pro-social choice depend on there being a partner chimpanzee in the neighboring room?
+
+## Summarizing the Chimpanzee Data
+
+```{r}
+chimpanzee = read_csv("../../data/chimpanzee.csv")
+
+head(chimpanzee)
+```
+
+- Summary of frequency of pro-social choices in chimpanzee experiments with and without partners
+
+```{r}
+sum1 = chimpanzee %>% 
+  mutate(session_type = case_when(
+    partner == "none" ~ "no partner",
+    TRUE ~ "partner"
+  )) %>% 
+  group_by(actor, session_type) %>% 
+  summarize(prosocial = sum(prosocial),
+            selfish = sum(selfish),
+            n = prosocial + selfish,
+            pct_prosocial = 100*prosocial/n)
+sum1
+
+sum1_wide = sum1 %>% 
+  select(actor, session_type, pct_prosocial) %>% 
+  pivot_wider(names_from = session_type,
+              values_from = pct_prosocial)
+
+sum1_wide
+```
+
+- We see that every chimpanzee made the pro-social choice more than half the time when a partner was present.
+- Chimpanzee G had a smaller number of trials than the others and had no trials without a partner
+- Each partner made the pro-social choice more often with a partner than without.
+
+- We next move to models of this data and questions of inference.
+
+## Graphical Summary
+
+```{r}
+ggplot(sum1, aes(x = actor, y = pct_prosocial,
+                 fill = session_type)) +
+  geom_col(color = "black",
+           position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(labels = percent_format(scale = 1)) +
+  xlab("Chimpanzee") + 
+  ylab("Pro-social Choice Probability") +
+  ggtitle("Chimpanzee Pro-social Choice Comparison",
+          subtitle = "with and without partners") +
+  guides(fill = guide_legend(title = "Session")) +
+  theme_minimal()
+```
+
+- Note the use of:
+    - `position_dodge2(preserve = "single")` so that the widths of bars are all the same even if there is missing data
+    - `percent_format()` from **scales** to improve the y-axis tick labels
+    - `guides()` to change the default fill legend title
+    - `theme_minimal()` to modify the background and grid lines
+
+
+## Partial Data
+
+- An important big question is to use data from all of the chimpanzees with and without partners to assess the differences between the probabilities of pro-social and selfish choices across multiple individuals
+
+- To work toward this goal, we begin with a subset of the data for which the parameter definitions are more clear and assumptions are more straightforward.
+
+- Chimpanzee subject A was tested 90 times with a partner (three sets of 30 trials with each of three different partners)
+- This chimpanzee made the pro-social choice 60 times out of 90 trials.
+
+## A Statistical Model
+
+1. Name and define variables
+2. Make assumptions (these can be examined later)
+3. Write a probability model for the variables and required parameters
+
+- $X$ is the number of pro-social choices that subject A makes in 90 trials.
+- Assume:
+    - each trial could be pro-social or selfish
+    - 90 trials was predetermined
+    - trials are independent (this assumption is debatable)
+    - same probability of pro-social choice for each trial (this assumption is debatable)
+- Under these assumptions, $X$ has a binomial distribution.
+- Parameters are:
+    - $n$, the number of trials. Here $n=90$.
+    - $p$, an unknown long-run probability that **this chimpanzee makes the pro-social choice**. (We may be interested in inference on this parameter using the data.)
+        - If we later explore data from multiple chimpanzees or from sessions with and without a partner, we will need to redefine what $p$ means.
+    
+The model is:
+
+$$
+X \mid p \sim \text{Binomial}(90,p)
+$$
+
+The data are:
+
+- $n=90$
+- $x=60$
+
+## Populations and Samples
+
+- Before making a statistical inference, it is important to make a conceptual decision about a *population* of interest and to understand the available data as a *sample* from this population.
+- In the framework of this conceptual decision,
+it is then possible to interpret parameters in a statistical model which connects the data to these parameters.
+- The general idea here is that some true data generation process is governed by one or more unknown *parameters* in a statistical model and we use *statistics* calculated from sampled data to estimate and make inferences about the parameters in this model, thus learning about the population of interest.
+
+- In our current case study,
+we have a number of trials, each of which results in a chimpanzee either making a pro-social or selfish choice.
+- It is natural to want to model each trial as a single Bernoulli trial with some success probability $p$ of making the pros-social choice.
+- But what is the population of interest that should govern our interpretation of this value $p$?
+- The context of the data collection and associated assumptions are critical in making an appropriate decision.
+- When doing different types of inference using part or all of the data, our concept of what is the population and thus how to interpret the meaning of $p$ might change.
+
+- This first inference question is using data from the experiment collected from Chimpanzee A in trials with a partner present.
+- For this inference, we may think of the population as being *the hypothetical collection of trials if we indefinitely tested this chimpanzee in the experimental setting with a partner present*.
+- The parameter $p$ will then refer to a long-run probability *that Chimpanzee A* would make the pro-social choice in the experimental setting with a partner present.
+    - The data we use combines data from three different sessions, each with a different partner.
+    - Here, we make a (strong) assumption that the identity of the partner does not affect this probability $p$.
+- Other assumptions are detailed below.    
+    
+## Point Estimates
+
+- A *point estimate* is a statistic calculated from the data to estimate a parameter.
+- We often put a "hat" over the parameter symbol to indicate an estimate.
+- A natural estimate here is:
+    - $\hat{p} = \frac{x}{n} = \frac{60}{90} = `r round(60/90,3)`$
+
+## Explore with Simulation
+
+- If the true value of $p$ was $60/90$ or close to it, how much would the sample proportion $P = X/n$ tend to vary from its true value?
+- We will explore this with theory soon, but first carry out a simulation.
+
+- Choose $B=1,000,000$ to repeat one million times (perhaps excessive).
+- Set $p=60/90$.
+    - In our simulation, the observed $\hat{p}$ from the data becomes the true $p$.
+- Set $n=90$.
+- We will generate $B$ simulated random variables, $X^*_1,\ldots,X^*_B$ where each $X_i \sim \text{Binomial}(90, 60/90)$.
+
+```{r}
+## simulation parameters
+B = 1000000
+n = 90
+x = 60
+p = x/n
+
+## do the simulation
+sim = tibble(
+  x_star = rbinom(B, n, p),
+  p_hat = x_star / n)
+
+## summarize the simulation
+sim_summary = sim %>% 
+  summarize(mean = mean(p_hat),  ## this should be very close to p=60/90
+            sd = sd(p_hat))
+sim_summary
+
+## Graph of simulated p_hat values
+ggplot(sim, aes(x = p_hat)) +
+  geom_histogram(center = 60/90, binwidth = 1/90,
+                 color = "black", fill = "firebrick") +
+  xlab("sample proportion (p-hat)") +
+  theme_minimal()
+
+```
+
+- The simulated standard error is about 0.050 to two significant figures.
+- The shape of the simulated sampling distribution is approximately normal.
+- For every normal curve, about 95% of the area is within $1.96 \times \sigma$ of the mean.
+
+```{r}
+qnorm(0.975)
+pnorm(1.96) - pnorm(-1.96)
+```
+
+- Thus, $\prob(|\hat{P} - p| < 1.96 \text{SE}) \approx 0.95$.
+    - SE here stands for *standard error*, or the standard deviation of the sampling distribution of $\hat{P}$.
+    - About 95% of all possible sample proportions are within 1.96 SEs of the true $p$.
+    - It follows that for a single sample, if the binomial model is valid, we are justified to be 95% *confident* that the unknown true value of $p$ is within 1.96 standard errors of the observed sample proportion $\hat{p}$.
+    
+- In our case study example, define $p$ to be the long-run probability that chimpanzee A makes the pro-social choice in the experimental setting with a partner present.
+    - We observe $\hat{p} = 60/90 \doteq 0.667$.
+    - Simulation provides an estimated standard error of 0.050.
+    - We are 95% confident that the true (unknown and unknowable) value of $p$ is within 1.96 standard errors of 0.667: $0.667 \pm 1.96(0.050)$ or $0.667 \pm 0.098$
+    - We are 95% confident that $0.569 < p < 0.765$.
+    
+- In applications, we want to interpret this confidence interval in context:
+
+> We are 95% confident that Chimpanzee A would make the pro-social choice in the conditions of the experiment with a partner present between 56.9% and 76.5% of the time.
+
+- Note that the technical conditions on which this inference is based are solid: the binomial distribution is well approximated by the normal distribution when $n$ is large enough and $n=90$ is plenty large enough for a $p$ near 0.67.
+- However, we could be misled if conditions of the binomial model fail.
+    - Are trials independent? What if the chimpanzee makes the selfish choice and the partner gets agitated. Might the chimpanzee be apt to make the pro-social choice at the next trial?
+    - Are the probabilities all the same? Is there a trend to be more pro-social at the beginning or end of a session or from one day to the next?
+- The authors did examine data we do not have to see if there was evidence of a failure of the assumptions and did not find any, but this is the sort of thing that one might want to replicate to gain greater confidence in the conclusion.
+    
+## Calculations without simulation
+
+- The previous approach required simulation to determine the standard error.
+- Theory provides an alternative: a formula.
+- We will, actually consider a simple formula and a slight modification with better behavior.
+    
+## Standard Error 
+
+- How accurate is the point estimate $\hat{p} = 60/90$ of the true unknown $p$?
+- The (random) *estimator* is $\hat{P} = \frac{X}{n}$, where $X \sim \text{Binomial}(n,p)$  
+(I am going to use $\hat{P}$ to represent our random estimator, and $\hat{p}$ to represent the non-random observed statistic.)  
+    - The (non-random) *estimate* is our $\hat{p} = \frac{60}{90}$  
+    - The variance of $\frac{X}{n}$ is:
+    
+$$
+\Var(\hat{P}) = \Var\left( \frac{X}{n} \right) = \frac{\Var(X)}{n^2} = \frac{np(1-p)}{n^2} = \frac{p(1-p)}{n}
+$$
+
+- Consider the *sampling distribution* of the estimator when doing inference.   
+    - You can think of the sampling distribution as the distribution of all possible values of the statistic taken with a fixed sample size $n$.  
+
+$$
+\text{SE}(\hat{p}) = \sqrt{ \frac{p(1-p)}{n} }
+$$
+
+```{r standard-error}
+X = 60
+n = 90
+p_hat = X/n
+p_hat
+
+## Possible estimate for the SE
+round(sqrt(p_hat*(1-p_hat)/n), 3)
+```
+
+- The calculated SE of 0.05 is what we found (rounding to three digits) in our simulation.
+
+
+## Introduction to Confidence Intervals for p
+
+- A confidence interval incorporates uncertainty with the point estimate to form an *interval estimate* with an attached level of confidence.
+- A conventional choice is 95%, but other confidence levels are possible.
+- When the sampling distribution of a point estimate is approximately normal, we typically construct confidence intervals as
+
+$$
+\text{point estimate} \pm \text{margin of error}
+$$
+where the margin of error is a critical value from a standard normal distribution multiplied by a standard error.
+
+$$
+\text{margon of error} = z \times \text{SE}
+$$
+where $z$ is selected so that the area between $-z$ and $z$ under a standard normal density matches the desired confidence level.
+
+
+## Logic of Confidence Intervals
+
+- Recall that $\hat{P} = \frac{X}{n}$ where $X \sim \text{Binomial}(n,p)$.  
+    - We learned previously that under certain criteria, a binomial distribution approximately follows a normal distribution with mean $\mu = np$ and $\sigma = \sqrt{np(1-p)}$  
+    - This implies that our estimator $\hat{P} \sim N\left(p, \sqrt{\frac{p(1-p)}{n}}\right)$ (this is before we observe our sample so it is still random)  
+- If $p$ was known, then there is about a 95% chance that an observed $\hat{p}$ will be within 1.96 standard errors of $p$, assuming approximate normality. 
+    - This is because if $p$ is known, then $P(p-1.96 SE < \hat{P} < p + 1.96 SE) \approx 0.95$
+        - where $SE = \sqrt{\frac{p(1-p)}{n}}$, and $\hat{p}$ is a realization of $\hat{P}$.    
+    - Use a different value instead of $z=1.96$ for a different confidence level.
+- If we do not know $p$, but observe $\hat{p}$, there was a 95% chance before the random sample was taken that $\hat{p}$ would be within 1.96 SEs of this unknown $p$, so we can be *95% confident* that the observed $\hat{p}$ is one of the 95% of the possible ones that is within 1.96 SEs of $p$.
+- Therefore, we are 95% confident that $p$ is within 1.96 SEs of $\hat{p}$.
+- We construct a 95% confidence interval by forming an interval centered at a point estimate plus or minus 1.96 times the standard error.
+
+## Interpretation of confidence intervals
+
+
+> What do we hope to capture within a confidence interval?
+
+- The unknown parameter $p$.  In practice, we do not know if $p$ is or is not within the interval.
+
+
+> What happens to confidence intervals when the confidence level changes?
+
+- Intuitively, to be more confident the true $p$ is captured, it makes sense that would correspond with a wider interval (all else equal)
+
+- Recall the margin of error gives the half-width of the interval:
+
+$$
+\text{margin of error} = z \times \text{SE}
+$$
+
+- For a given SE, $z$ controls the the width of the interval.  A larger $z$ results in a wider interval.
+- Let's review the $z$'s for a few different confidence levels.  
+
+Notice as we decrease the confidence level, the magnitude of $z$ decreases as well.
+
+```{r}
+## 95% confidence
+## Cut off 2.5% in each tail
+## +/- z is the 0.025 and 0.975 quantiles.
+qnorm(0.975)
+
+## 90% confidence
+## Cut off 5% in each tail
+qnorm(0.95)
+
+## 80% confidence
+## Cut off 10% in each tail
+qnorm(0.90)
+
+## 99% confidence
+## Cut off 0.5% in each tail
+qnorm(0.995)
+```
+
+- In general, if the desired confidence level is `conf`, then the corresponding quantile is `1 - (1-conf)/2`.
+
+```{r}
+conf = c(0.8, 0.9, 0.95, 0.99)
+round(qnorm(1 - (1-conf)/2),3)
+```
+
+## More on Confidence Intervals for p
+
+
+## Complications
+
+- There are some complications with our confidence intervals for p:
+
+- The standard error is $\text{SE}(\hat{p}) = \sqrt{ \frac{p(1-p)}{n} }$ which also needs to be estimated as we do not know $p$.
+- The binomial distribution is discrete, and so the sampling distribution of $\hat{p}$ is also discrete and not exactly normal.
+
+- Both of these complications can lead to inaccuracies in the confidence interval approach.
+
+## Wald Method
+
+- The Wald method uses the observed relative frequency as the point estimate for $p$:
+
+$$
+\hat{p} \pm 1.96 \sqrt{ \frac{\hat{p}(1-\hat{p})}{n} }
+$$
+
+- For our observed data, we get
+
+```{r wald-ci}
+binom_se =  function(n, p)
+{
+  return ( sqrt( p*(1-p)/n) )
+}
+
+binom_ci = function(est, se, conf=0.95)
+{
+  z = qnorm(1 - (1 - conf)/2)
+  me = z * se
+  ci = est + c(-1,1)*me
+  return(ci)
+}
+
+x = 60
+n = 90
+p_hat = x/n
+
+se_wald = binom_se(n, p_hat)
+
+se_wald
+
+ci_wald = binom_ci(p_hat, se_wald)
+
+round(ci_wald, 3)
+```
+
+
+## Agresti-Coull Method
+
+- The Agresti-Coull method uses a different point estimate and standard error.
+- Rather using $\hat{p} = \frac{x}{n}$:
+    - Act as if there were four additional observations, two successes and two failures in the sample.
+    - $\tilde{p} = \frac{x+2}{n+4}$
+    - This is an example of a *shrinkage* estimate, which pulls the observed proportion a bit toward 0.5.
+    - Then use the modified point estimate and sample size to estimate the standard error and confidence interval.
+    - Note that the "add two observations of each type to the sample" method is a simplification of the most accurate value to add and that these values are tuned for a 95% confidence level
+    - A different confidence level would employ a different adjustment.
+
+    
+$$
+\tilde{p} \pm 1.96 \sqrt{ \frac{\tilde{p}(1-\tilde{p})}{n+4} }
+$$
+
+```{r agresti-coull-ci}
+x = 60
+n = 90
+
+p_tilde = (x+2)/(n+4)
+p_tilde
+
+se_agresti = binom_se(n+4, p_tilde)
+se_agresti
+
+ci_agresti = binom_ci(p_tilde, se_agresti)
+round(ci_agresti, 3)
+```
+
+- Theory suggests that for most values of $p$ and $n$, this approach will be more accurate.
+
+
+- The reason for the alternative approach is that when we use $\hat{p}$ to estimate the standard error, this estimate might be a little too small or a little too big, just by chance.
+- When the estimated standard error is a little too small, the confidence interval is a little too narrow and it can miss the true value too often.
+- When $\hat{p}$ is closer to 0 or to 1 than the true $p$, the SE is underestimated by a bit more than the overestimate when $\hat{p}$ is a bit closer to 0.5 than $p$ is.
+- Using $\tilde{p} = \frac{x+2}{n+4}$ moves the estimate a bit closer to 0.5 than $\hat{p} = x/n$ is.
+- The standard error could be a little larger as $\tilde{p}(1 - \tilde{p}) \ge \hat{p}(1 - \hat{p})$, but dividing by $n+4$ instead of $n$ make the estimated SE smaller.
+
+## Evaluating the accuracy of Confidence Intervals for p
+
+- Let's generate a realization from a binomial distribution with $n=90$.  - In practice we do not know what the value for $p$ is...this is why we want to do inference on it!
+- However, we are going to specify a value for $p$, and then pretend we don't know it.
+
+```{r}
+set.seed(123) # setting the random number seed
+
+## Generate data
+n = 90
+p = 0.25
+x = rbinom(1, n, p)
+x
+
+## Compute our point estimates
+p_hat = x/n
+p_hat
+p_tilde = (x+2)/(n+4)
+p_tilde
+```
+
+- Now let's get our confidence intervals.
+- It will be nice to have functions for repeated calculations.
+
+```{r}
+wald_ci = function(n, x, conf=0.95)
+{
+  p_hat = x/n
+  se = binom_se(n, p_hat)
+  ci = binom_ci(p_hat, se, conf)
+  return ( ci )
+}
+
+agresti_ci = function(n, x, conf=0.95)
+{
+  p_tilde = (x+2)/(n+4)
+  se = binom_se(n+4, p_tilde)
+  ci = binom_ci(p_tilde, se, conf)
+  return ( ci )
+}
+```
+
+
+```{r}
+wald0 = wald_ci(n, x)
+agresti0 = agresti_ci(n, x)
+
+rbind(wald0, agresti0)
+
+p
+```
+
+- Since we know the true value of $p$ (we selected it), we can check if our intervals captured the true $p$.  
+- Both intervals captured our $p$.  Yay!  Does this always happen?
+
+- We can check the accuracy of the intervals, more specifically the *capture probability* (also know as the coverage probability).
+- This is the long-run performance of the intervals if we repeatedly drew samples of the same size from the same population
+- Ideally this would match the confidence level (e.g., 95%).
+
+
+## Direct calculations
+
+- We could do a large simulation study with many different values of $p$ and $n$ to compare how often each method captures the unknown true $p$ in its confidence interval.
+- Instead, we can directly calculate the coverage probabilities.
+- For a given $n$ a series of values for $p$, we can calculate the capture probabilities for each method and then compare them to 95% graphically.
+
+```{r direct-compare-wald}
+## Calculate the coverage probability
+calc_wald = function(n, p, conf=0.95)
+{
+  z =  qnorm(1 - (1-conf)/2)
+  df = tibble(
+    x = 0:n,
+    d = dbinom(x,n,p), # we use dbinom instead of simulating with rbinom
+    p_hat = x/n,
+    se = sqrt( p_hat*(1-p_hat)/n ),
+    a = p_hat - z*se,
+    b = p_hat + z*se)
+  prob = df %>%
+    filter(a < p & p < b) %>%
+    summarize(prob = sum(d)) %>%
+    pull(prob)
+  return ( prob )
+}
+
+```
+
+
+```{r}
+capture_wald = function(n, seq_p, conf=0.95)
+{
+  prob = numeric(length(seq_p))
+  for ( i in seq_along(seq_p) )
+  {
+    prob[i] <- calc_wald(n,seq_p[i],conf)
+  }
+  df = tibble(p = seq_p,prob=prob)
+  return ( df )
+}
+
+plot_wald = function(n, seq_p, conf=0.95,...)
+{
+  capture_wald(n, seq_p) %>%
+  ggplot(aes(x=p, y=prob)) +
+    geom_line(...) +
+    geom_hline(yintercept = conf, linetype = "dashed") +
+    ggtitle("Wald Method Capture Probability",
+            subtitle = paste("n = ",n)) +
+    theme_bw()
+}
+
+n = 90
+p = seq(0.1, 0.9, length.out = 201)
+
+plot_wald(n, p, conf=0.95, color="red")
+```
+
+
+```{r direct-compare-ac}
+calc_agresti = function(n, p, conf=0.95)
+{
+  z = qnorm(1 - (1-conf)/2)
+  df = tibble(
+    x = 0:n,
+    d = dbinom(x,n,p),
+    p_tilde = (x+2)/(n+4),
+    se = sqrt( p_tilde*(1-p_tilde)/(n+4) ),
+    a = p_tilde - z*se,
+    b = p_tilde + z*se)
+  prob = df %>%
+    filter(a < p & p < b) %>%
+    summarize(prob = sum(d)) %>%
+    pull(prob)
+  return ( prob )
+}
+
+capture_agresti = function(n,seq_p,conf=0.95)
+{
+  prob = numeric(length(seq_p))
+  for ( i in seq_along(seq_p) )
+  {
+    prob[i] <- calc_agresti(n,seq_p[i],conf)
+  }
+  df = tibble(p = seq_p, prob = prob)
+  return ( df )
+}
+
+plot_agresti = function(n, seq_p, conf=0.95, ...)
+{
+  capture_agresti(90,seq_p) %>%
+  ggplot(aes(x=p,y=prob)) +
+    geom_line(...) +
+    geom_hline(yintercept = conf, linetype = "dashed") +
+    ggtitle("Agresti-Coull Method Capture Probability",
+            subtitle = paste("n = ",n)) +
+    theme_bw()
+}
+
+plot_agresti(n , p, color="red")
+```
+
+## Graph Interpretation and Summary
+
+- An ideal method would have a capture probability of 95% for all possible true values of $p$.
+    - There are only $n+1$ possible values for $X$, so a deterministic method will have only $n+1$ distinct confidence intervals.
+    - No such method can have a capture probability of exactly 95% for all possible $p$.
+- A method is good if the true capture probability is close to 95% for most values of $p$.
+- The Agresti-Coull method is superior to the Wald method.
+- Capture probabilities may be much less than 95% for $p$ close to 0 or 1.
+- You may use the code above to explore for different values of $n$.
+    - For smaller $n$, the advantage of the Agresti-Coull method tends to be greater.
+    - For very large $n$, both the Wald and Agresti-Coull methods are accurate
+    - The simulation method is essentially identical to the Wald method for very large simulations.
+    
+> The Agresti-Coull method is the best choice overall among those presented.
+
+
+
+
+
+
+
+
+
+
+

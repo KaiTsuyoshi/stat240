@@ -1,0 +1,282 @@
+z   
+---
+title: "Purrr and JSON"
+author: "Bi Cheng Wu"
+documentclass: article
+classoption: letterpaper
+output:
+  html_document:
+  highlight: tango
+---
+
+Materials here heavily inspired by [Jennifer Bryan's `purrr` tutorial](https://jennybc.github.io/purrr-tutorial/).
+
+## Setup details
+
+- You will need `purrr` from the `tidyverse` suite and `tidyjson` for this lecture.
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE,
+                      fig.height=2, fig.width=3)
+library(tidyverse)
+library(tidyjson)
+## viridis colors
+source("../../scripts/viridis.R")
+```
+
+# Overview
+
+- We are going to learn how to use the `purrr` package to do useful things like automate operations, map functions, and help us manipulate non-rectangular data formats like lists and JSON.
+
+# Background
+
+## JSON
+
+So far, everything you've done in `R` has been done using vectors and data frames. These are relatively easier to work with, since they are both "rectangular" formats, meaning they can be thought of as if they were matrices, with a certain number of rows and columns, and one value per cell.
+
+In the real world, not all data formats are "rectangular", and one common data format for non-rectangular data is what's known as a JSON (JavaScript Object Notation) format. It was created for JavaScript, but is now used widely by developers of all languages. Like CSV files, JSON files are just text files written in a certain standard way that programs can use to exchange data. Here is an example of a small JSON file:
+
+```{json john smith example, code=readLines("../../data/john-smith.json")}
+```
+
+Here are the various data types allowed in a JSON file (from the Wiki page):
+
+- Number: a signed decimal number that may contain a fractional part and may use exponential E notation, but cannot include non-numbers such as NaN... JavaScript uses a double-precision floating-point format for all its numeric values.
+- String: a sequence of zero or more Unicode characters. Strings are delimited with double-quotation marks and support a backslash escaping syntax.
+- Boolean: either of the values true or false
+- Array: an ordered list of zero or more elements, each of which may be of any type. Arrays use square bracket notation with comma-separated elements.
+- Object: a collection of name–value pairs where the names (also called keys) are strings. Objects are intended to represent associative arrays, where each key is unique within an object. Objects are delimited with curly brackets and use commas to separate each pair, while within each pair the colon ':' character separates the key or name from its value.
+- null: an empty value, using the word null
+
+Note each of these objects can be be nested inside an arrays or objects (including arrays and objects themselves!).
+
+> Exercise: use the list of data types to identify the type of each data value in the example file above.
+
+Let's read in the example data file above and learn to manipulate it with basic `R` operations. Make sure `tidyjson` is loaded, then run the code below.
+
+```{r read example json}
+library(tidyjson)
+
+john.smith = read_json("../../data/john-smith.json")
+
+class(john.smith)
+head(john.smith)
+str(john.smith)
+```
+
+Note from looking at `str()` that the object created has 2 components at the highest level which can be accessed with `$`. There's a `$document.id` which is just 1, and a `$..JSON` which contains the actual contents that have been read in.
+
+Let's look more closely at this part of the data.
+
+```{r}
+john.smith..json = john.smith$..JSON
+str(john.smith..json)
+john.smith..json
+```
+
+So `R` has turned this into a list object!
+
+
+## Lists in `R`
+
+Quick lesson on lists!
+
+In `R`, a list is like a vector, except it's much more generalized. In `R`, a vector must contain objects of the same type. As a demonstration, if one object in a vector is changed, the entire vector may change type to match it:
+
+```{r}
+(v_doub <- 1:4 * 1.2)
+str(v_doub)
+v_doub[3] <- "uhoh"
+str(v_doub)
+```
+
+This is because in `R`, the vector is the fundamental object, and most operations are designed to work across vectors and can be run very quickly and efficiently. This requires the vectors to be homogeneous and all have the same type.
+
+In contrast, lists in `R` are NOT designed to run fast vectorized operations, and so the requirements for what can be in a list are much more relaxed. You can have any combination of types of objects, as well as nested objects (lists inside lists, or vectors inside lists). Elements can even be functions, plots, data frames, etc. The elements can also be named or unnamed.
+
+```{r}
+example_list = list(
+  5,
+  "example",
+  vec  = (1:5)^2,
+  nested_list = list(
+    func = function(x){ x^2+1 },
+    df   = head(mtcars,3)
+  ),
+  p    = ggplot() + geom_function(fun=dnorm) + xlim(c(-3,3))
+)
+
+example_list
+```
+
+Elements without names show up as `[[1]]` or `[[2]]` indicating they are the 1st and 2nd elements. Named elements show up as `$name` in the list. To access elements, you can use either of these methods:
+
+ - `[1]` returns the first element **in a list**
+ - `[[1]]` returns the first element **by itself** (i.e. without the list around it)
+ - `$name` or `[["name"]]` returns the element named "name" **by itself**
+
+```{r}
+example_list[1]
+example_list[[1]]
+example_list$vec
+example_list[["nested_list"]]
+```
+
+Note that lists in `R` have an order, so even though the 3rd element is named `vec`, we can still use `[3]` or `[[3]]` to access it (as well as `$vec` and `[["name"]]`).
+
+```{r}
+example_list[3]
+example_list[[3]]
+example_list$vec
+example_list[["vec"]]
+```
+
+Also note the saved plot will redisplay the plot whenever we try to access it
+
+```{r}
+example_list$p
+```
+
+
+## Data frames as lists
+
+You've actually already used lists extensively! In `R`, data frames are a special kind of list where the individual list objects are the columns, and they are required to have the same length. Using the famous `mtcars` data frame, we can show this
+
+```{r}
+data(mtcars)
+head(mtcars)
+is.list(mtcars)
+as.list(mtcars)
+```
+
+
+## Back to JSON
+
+So our example file read in as a list!
+
+```{r}
+str(john.smith..json)
+```
+
+Specifically, `john.smith..json` is actually a list with 1 element, which is itself a list. Let's remove the outer wrapper list and view the nested inside list that contains the actual data.
+
+```{r}
+john.smith.list = john.smith..json[[1]]
+str(john.smith.list)
+```
+
+We can now use standard list operations to access the individual components of this data.
+
+```{r}
+john.smith.list[1]
+john.smith.list[[2]]
+john.smith.list$address
+john.smith.list$address$streetAddress
+john.smith.list[["phoneNumbers"]]
+john.smith.list$phoneNumbers[[1]]
+john.smith.list$phoneNumbers[[1]]$number
+```
+
+## Using `purrr` to handle lists
+
+Maybe you can imagine, but working with these arbitrary non-rectangular JSON files can be tedious and annoying. Imagine if we had a list of contacts stored in the same way as we stored John Smith's information. Operations we normally take for granted such as for example, taking all the values in a phone number column of a data frame are not easily done with lists.
+
+Luckily, the package `purrr` has lots of useful functions for working with lists (as well as data frames, since those are also lists). Here we will demonstrate some ways of using `purrr` to simplify list operations.
+
+For our data, we're going to read in a JSON file containing a list of the 30 POV characters from the HBO show Game of Thrones to use as an example. This file comes from the `repurrrsive` package, but it has some spoiler info removed (the fields `"died"` and `"alive"` have been removed). You can find the file on your Canvas page.
+
+```{r}
+# remove outer wrappers to just get inside list with data
+got_chars = read_json("../../data/got_chars.json")$..JSON[[1]]
+```
+
+We can briefly view the structure of this list:
+
+```{r}
+# look at the fields available to the first character
+str(got_chars[[1]], list.len=14)
+length(got_chars)
+```
+
+### `purrr::map()`
+
+The `map` function will apply a given function across elements of a vector/list. Note the `map` function will ALWAYS return a list object.
+
+```{r}
+map(c(9, 16, 25), sqrt)
+```
+
+You can also use `map` to access things by name or by position.
+
+```{r}
+map(got_chars[1:4], "name")
+map(got_chars[5:8], 3)
+```
+
+These can of course also be run using the pipe `%>%`
+
+```{r}
+got_chars[1:4] %>% 
+  map("name")
+got_chars[5:8] %>% 
+  map(3)
+```
+
+If you don't want `map` to return a list, you can use one of its sister functions like `map_chr`, `map_int`, `map_dbl`, or `map_lgl` to return a vector of a specific type (character, integer, double, or logical).
+
+```{r}
+map_dbl(c(9, 16, 25), sqrt)
+got_chars[1:4] %>% 
+  map_chr("name")
+```
+
+You can also use this to extract multiple fields out of a list. You can use `[` here to specify to extract out particular keys from the list. Note it's quoted using backticks to tell `R` to use it as a function.
+
+```{r}
+x = got_chars %>% 
+  map(`[`, c("name", "culture", "gender", "born"))
+str(x[1:2])
+```
+
+Alternatively, you can also use the `extract` function from `magrittr`, which is provided by `tidyverse` (this is actually the package that provides the `%>%` pipe function!)
+
+```{r}
+library(magrittr)
+x = got_chars %>% 
+  map(extract, c("name", "culture", "gender", "born"))
+str(x[1:2])
+```
+
+
+### Extract as data frame
+
+This is probably one of the most useful features of `purrr`: you can use the `map_dfr()` function to extract values into a data frame, which enables easier further manipulation of the data.
+
+```{r}
+got_chars %>% 
+  map_dfr(extract, c("name", "culture", "gender", "id", "father","mother"))
+```
+
+The variables have also been automatically converted where possible. You can also explicitly specify types if necessary.
+
+```{r}
+got_chars %>% {
+  tibble(
+       name = map_chr(., "name"),
+    culture = map_chr(., "culture"),
+     gender = map_chr(., "gender"),       
+         id = map_int(., "id"),
+       born = map_chr(., "father"),
+      alive = map_chr(., "mother")
+  )
+}
+```
+
+Similar to the `map` functions, the `pmap` functions (`pmap`, `pmap_chr`, `pman_dbl`, etc.) apply across the entire list with arbitrary number of arguments. For example, to apply `paste()` across the characters' background info (which you might do if you want to write this to a csv file, for example), you can do this:
+
+```{r}
+got_chars %>% 
+  map_dfr(extract, c("name", "culture", "gender", "id")) %>% 
+  pmap_chr(paste,sep=", ")
+```

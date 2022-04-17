@@ -1,0 +1,151 @@
+---
+title: "Applications of Strings and Regular Expressions"
+author: "Bret Larget"
+output: html_document
+##editor_options: 
+##  chunk_output_type: outline
+---
+
+## Strings and Regular Expressions
+
+### Exoplanets
+
+- The *exoplanet* data set has many variables
+- We examine some of them
+
+#### Read the data
+
+```{r}
+planets = read_csv("../../data/exoplanets_default_2021-06-15.csv",
+                   skip = 100) %>% 
+  select(pl_name, hostname, discoverymethod, disc_year) %>% 
+  rename(planet = pl_name,
+         star = hostname,
+         method = discoverymethod,
+         year = disc_year)
+
+head(planets)
+```
+
+#### Problems
+
+> Find the last character of each planet name. Tabulate the count of how often each character appears
+
+```{r}
+prob1 = planets %>% 
+  mutate(last_character = str_sub(planet, -1, -1),
+         also_last = str_extract(planet, ".$")) %>% 
+  count(last_character) %>% 
+  arrange(desc(n))
+
+prob1
+```
+
+
+
+
+> Are there any planets in the data set whose name ends in " c" for which there is not a corresponding planet in the same stellar system whose name ends " b"?
+
+```{r}
+prob2 = planets %>% 
+  filter(str_detect(planet, " [bc]$")) %>% 
+  group_by(star) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(str_detect(planet, "c$") & n == 1)
+prob2
+```
+
+> Most planets have a name that matches the star name followed by a space and a lower case letter. Identify any planets that do not follow this pattern.
+
+- (the simple approach here can fail if the star name contains characters with special meaning in a regular expression)
+
+```{r}
+prob3 = planets %>% 
+  filter(!str_detect(planet, str_c("^", star, " ", "[:lower:]$")))
+prob3
+```
+
+> How many stars have the symbol `+` in their names?
+
+```{r}
+
+```
+
+
+> Define the *root* of the planet name to be the string of characters that precedes the first space ' ' or dash " ".
+Find the top ten planet root names and tabulate them with their counts in descending order.
+
+```{r}
+
+```
+
+## Baseball Data
+
+### Raw Data
+
+- Read in the raw MLB 2021 basic hitter and pitcher data sets
+
+```{r}
+batters = read_csv("../../data/mlb-2021-player-batting-basic.csv")
+pitchers = read_csv("../../data/mlb-2021-player-pitching-basic.csv")
+```
+
+### Name
+
+- The `Name` variable actually has three variables encoded.
+    - The name of the player
+    - A possible symbol:
+        - `*` if the players bats/throws with their left hand
+        - `+` if the player is a switch hitter (can bat from either side of the plate)
+        - no symbol if the player bats/throws with their right hand
+    - A unique player id string which follows the backslash
+
+> Separate information from Name
+
+- For each data set, separate the `Name` variable into three columns:
+    - `Name` with the player name
+    - `Bats` or `Throws` with values "left", "right", or "switch"
+    - `ID` with the unique player id
+    
+```{r}
+
+```
+
+### Position Summary
+
+- The variable `Pos Summary` has a summary of the positions that each player who batted played during the game.
+- Positions have a one character code:
+    - 1--9 for pitcher, catcher, first base, second base, third base, short stop, left field, center field, and right field;
+    - D is designated hitter
+    - H is a pinch hitter
+- There is other information as well.
+    - The order of the position is in terms of the number of games played at that position.
+    - A `*` before the first position indicates the player appeared in this position for more than two-thirds of the team's games
+    - Positions after the `/` are ones the player played fewer than ten times in the season.
+    
+    
+#### Examine a random sample of examples
+
+```{r}
+set.seed("10132001")
+batters %>% 
+  sample_n(size = 20) %>% 
+  select(Name, G, `Pos Summary`)
+```
+
+> Identify the primary position for each player. Count the number of players for each primary position. Note that players in the pitchers data set who do not bat will not appear in batters, but should be counted as pitchers (code 1).
+
+```{r}
+
+```
+
+
+    
+
+
+
+
+
+
+

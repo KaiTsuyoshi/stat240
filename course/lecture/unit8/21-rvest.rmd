@@ -1,0 +1,259 @@
+
+---
+title: "Web scraping with `rvest`"
+author: "Bi Cheng Wu"
+documentclass: article
+classoption: letterpaper
+output:
+  html_document:
+  highlight: tango
+---
+
+<style>
+h1{margin-top:30px}
+h2{margin-top:30px}
+h3{margin-top:30px}
+blockquote{margin-top:30px}
+</style>
+
+## Setup details
+
+`rvest` included as part of `tidyverse` (needs to be separately imported).
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+
+# check if pacman package manager installed, then use to import all necessary packages
+library(tidyverse)
+library(rvest)
+```
+
+Parts of these notes taken from [here](https://www.dataquest.io/blog/web-scraping-in-r-rvest/).
+
+# Overview
+
+ - We will learn the **basics** of how to use `rvest` to scrape web pages.
+
+# Background
+
+## Motivation
+
+Sometimes, data you need isn't conveniently available in an easy to download and import format. In these situations, you may need to scrape the data yourselv using a script. Packages like `rvest` are designed to make this kind of work as easy as possible.
+
+## Web pages
+
+Before we can start learning how to scrape a web page, we need to **understand how a web page itself is structured.
+
+From a user perspective, a web page has nicely formatted text, images, and links, but the web page itself is written in specific coding languages that are then interpreted by our web browsers. When we're web scraping, we'll need to deal with the actual code being interpreted by the browser.
+
+The main languages used in web pages are Hypertext Markup Language (HTML), Cascasing Style Sheets (CSS) and Javascript.
+
+ - HTML gives a web page its actual structure and content,
+ - CSS gives a web page its style and look, including details like fonts and colors, and
+ - Javascript gives a webpage functionality.
+
+In this tutorial, we'll focus mostly on how to use R web scraping to read the HTML and CSS that make up a web page.
+
+### HTML
+
+Similar to Rmd, HTML is a *markup language*: it describes the content and structure of a web page. HTML is organized using **tags**, which are surrounded by `<>` angled brackets. Different tags perform different functions. Together, many tags
+will form and contain the content of a web page.
+
+The simplest HTML document looks like this:
+
+```{html}
+<html>
+</html>
+```
+
+Although the above is a legitimate HTML document, it has no text or other content. If we were to save that as a .html file and open it using a web browser, we would see a blank page.
+
+Notice that the word `html` is surrounded by `<>` brackets, which indicates that it is a tag. Also note that `</html>` is used to **close the <html> tag**, i.e. to **indicate the end of the contents of that tag element**. To add some more structure and text to this HTML document, we could change it into the following:
+
+```{html}
+<html>
+  <head>
+  </head>
+  <body>
+    <p>
+    Here's a paragraph of text!
+    </p>
+    <p>
+    Here's a second paragraph of text!
+    </p>
+  </body>
+</html>
+```
+
+Here we've added `<head>` and `<body>` tags, which add more structure to the document. The `<p>` tags are what we use in HTML to designate paragraph text.
+
+There are many, many tags in HTML, but we won't be able to cover all of them in this tutorial. If interested, you can check out [this site](https://developer.mozilla.org/en-US/docs/Web/HTML/Element). The important takeaway is to know that tags have particular names (`html`, `body`, `p`, etc.) to make them identifiable in an HTML document.
+
+Notice that each of the **tags are "paired"** in a sense that each one is accompanied by another with a similar name. That is to say, the opening `<html>` tag is paired with another tag `</html>` that indicates the beginning and end of the HTML document. The same applies to `<body>` and `<p>`.
+
+This is important to recognize, because it allows tags to be *nested* within each other. The `<body>` and `<head>` tags are nested within `<html>`, and `<p>` is nested within `<body>`. This nesting gives HTML a "tree-like" structure:
+
+<img src="https://i.ytimg.com/vi/90kC1YLNF3U/maxresdefault.jpg"/>
+
+This tree-like structure will inform how we look for certain tags when we're using R for web scraping, so it's important to keep it in mind. If a tag has other tags nested within it, we would refer to the containing tag as the *parent* and each of the tags within it as the **children**. If there is more than one child in a parent, the child tags \re collectively referred to as ""siblings"". These notions of parent, child and siblings give us an idea of the hierarchy of the tags.
+
+### CSS
+
+Whereas HTML provides the content and structure of a web page, CSS provides information about how a web page should be styled. When we say styling, we are referring to a *wide, wide* range of things. Styling can refer to the color of particular HTML elements or their positioning. Like HTML, the scope of CSS material is so large that we can't cover every possible concept in the language. If you're interested, you can learn more [here](https://www.w3.org/Style/CSS/Overview.en.html).
+
+Two concepts we *do* need to learn before we delve into the R web scraping code are  **classes** and **ids**.
+
+First, let's talk about classes. If we were making a website, there would often be times when we'd want similar elements of a website to look the same. For example, we might want a number of items in a list to all appear in the same color, red.
+
+We could accomplish that by directly inserting some CSS that contains
+the color information into each line of text\'s HTML tag, like so:
+
+```{html}
+<p style= "color:red" >Text 1</p>
+<p style= "color:red" >Text 2</p>
+<p style= "color:red" >Text 3</p>
+```
+
+The `style` text indicates that we are trying to apply CSS to the `<p>` tags. Inside the quotes, we see a key-value pair "color:red". `color` refers to the color of the text in the `<p>` tags, while red describes what the color should be.
+
+But as we can see above, we've repeated this key-value pair multiple times. That's not ideal --- if we wanted to change the color of that text, we'd have to change each line one by one.
+
+Instead of repeating this `style` text in all of these `<p>` tags, we
+can replace it with a `class` selector:
+
+```{html}
+<p class= "red-text " >Text 1</p>
+<p class= "red-text " >Text 2</p>
+<p class= "red-text " >Text 3</p>
+```
+
+The `class` selector, we can better indicate that these `<p>` tags are related in some way. In a separate CSS file, we can create the red-text class and define how it looks by writing:
+
+``` {css}
+.red-text {
+    color : red;
+}
+```
+
+Combining these two elements into a single web page will produce the same effect as the first set of red `<p>` tags, but it allows us to make quick changes more easily.
+
+Similarly, we may often want to scrape specific data that's identified using an **id**. CSS ids are used to give a single element an identifiable name, much like how a class helps define a class of elements.
+
+```{html}
+<p id= "special " >This is a special tag.</p>
+```
+
+If an id is attached to a HTML tag, it makes it easier for us to identify this tag when we are performing our actual web scraping with R.
+
+Don't worry if you don't quite understand classes and ids yet, it'll become more clear when we start manipulating the code.
+
+There are several R libraries designed to take HTML and CSS and be able to traverse them to look for particular tags. The library we'll use in this tutorial is `rvest`.
+
+# `rvest`
+
+The [`rvest` library](https://github.com/tidyverse/rvest), maintained by the legendary Hadley Wickham, is a library that lets users easily scrape ("harvest") data from web pages.
+
+`rvest` is one of the `tidyverse` libraries, so it works well with the other libraries contained in the bundle. `rvest` takes inspiration from the web scraping library BeautifulSoup, which comes from Python.
+
+## Scraping a web page in R 
+
+In order to start parsing through a web page, we **first need to request that data from the computer server that contains it**. In `rvest`, the function that serves this purpose is the `read_html()` function.
+
+`read_html()` takes in a web URL as an argument. Let's start by looking at [that simple, CSS-less page](https://dataquestio.github.io/web-scraping-pages/simple.html) from earlier to see how the function works.
+
+```{r}
+simple = read_html("https://dataquestio.github.io/web-scraping-pages/simple.html")
+```
+
+The `read_html()` function **returns a list object** that contains the tree-like structure we discussed earlier.
+
+```{r}
+simple
+```
+
+Let's say that we wanted to store the text contained in the single `<p>` tag to a variable. In order to access this text, we **need to figure out how to target** this particular piece of text. This is typically where CSS classes and ids can help us out since good developers will typically make the CSS highly specific on their sites.
+
+In this case, we have no such CSS, but we do know that the `<p>` tag we want to access is the only one of its kind on the page. In order to capture the text, we need to use the `html_nodes()` and `html_text()` functions respectively to search for this `<p>` tag and retrieve the text. The code below does this:
+
+```{r}
+simple %>% 
+  html_nodes("p") %>% 
+  html_text()
+```
+
+The `simple` variable already contains the HTML we are trying to scrape, so that just leaves the task of searching for the elements that we want from it. Since we're working with the `tidyverse`, we can just pipe the HTML into the different functions.
+
+We need to pass specific HTML tags or CSS classes into the `html_nodes()` function. We need the `<p>` tag, so we pass in a character "p" into the function. `html_nodes()` also returns a list, but it returns all of the nodes in the HTML that have the particular HTML tag or CSS class/id that you gave it. A *node* refers to a point on the tree-like structure.
+
+Once we have all of these nodes, we can pass the output of `html_nodes()` into the `html_text()` function. We needed to get the actual text of the `<p>` tag, so this function helps out with that.
+
+These functions together form the bulk of many common web scraping tasks. In general, web scraping in R (or in any other language) boils down to the following three steps:
+
+ - Get the HTML for the web page that you want to scrape
+ - Decide what part of the page you want to read and find out what HTML/CSS you need to select it
+ - Select the HTML and analyze it in the way you need
+
+## Example: National weather service
+
+For this example, we'll be looking at the **National Weather Service website**. Let's say that we're interested in creating our own weather app. We'll need the weather data itself to populate it. Weather data is updated every day, so we'll use web scraping to get this data from the NWS website whenever we need it.
+
+For our purposes, we'll take data from San Francisco, but each city's web page looks the same, so the same steps would work for any other city. A screenshot of the San Francisco page is shown below:
+
+<center><img src="https://i.imgur.com/KtWiOO9.png" style="width:70%"/></center>
+
+We're specifically interested in the weather predictions and the temperatures for each day. Each day has both a day forecast and a night forecast. Now that we've identified the part of the web page that we need, we can dig through the HTML to see what tags or classes we need to select to capture this particular data.
+
+## Using Chrome Devtools
+
+Thankfully, most modern browsers have a tool that allows users to **directly inspect the HTML and CSS** of any web page. In Google Chrome and Firefox, they're referred to as **Developer Tools**, and they have similar names in other browsers. The specific tool that will be the most useful to us for this tutorial will be the Inspector.
+
+You can find the Developer Tools by looking at the upper right corner of your browser. You should be able to see Developer Tools if you're using Firefox, and if you're using Chrome, you can go through `View -> More Tools -> Developer Tools`. This will open up the Developer Tools right in your browser window.
+
+The HTML we dealt with before was bare-bones, but most web pages you'll see in your browser are overwhelmingly complex. Developer Tools will make it easier for us to **pick out the exact elements of the web page that we want to scrape** and inspect the HTML.
+
+We need to see where the temperatures are in the weather page's HTML, so we'll **use the Inspect tool** to look at these elements. The Inspect tool will **pick out the exact HTML that we're looking for**, so we don't have to look ourselves!
+
+You **can access the Inspect tool in Chrome** by either
+
+ - right click on any part of page and select "Inspect elemet"
+ - in Google Chrome, press F12 key
+ - in Chrome, you can also use CTRL+SHIFT+C
+
+<center><img src="https://i.imgur.com/m60odAD.png" style="width:70%"/></center>
+
+## Using what we've learned
+
+Now that we've identified what particular HTML and CSS we need to target in the web page, we can use `rvest` to capture it.
+
+From the HTML above, it seems like each of the temperatures are contained in the class `temp`. Once we have all of these tags, we can extract the text from them.
+
+```{r}
+forecasts = read_html("https://forecast.weather.gov/MapClick.php?lat=37.7771&lon=-122.4196#.Xl0j6BNKhTY") %>%
+    html_nodes(".temp") %>%
+    html_text()
+
+forecasts
+```
+
+With this code, `forecasts` is now a vector of strings corresponding to the low and high temperatures.
+
+Now that we have the actual data we're interested in an R variable, we just need to do some regular data analysis to get the vector into the format we need. For example:
+
+```{r}
+library(readr)
+
+parse_number(forecasts)
+```
+
+# Next steps
+
+The `rvest` library makes it easy and convenient to perform web scraping using the same techniques we would use with the tidyverse libraries.
+
+This tutorial should give you the tools necessary to start a small web scraping project and start exploring more advanced web scraping procedures
+
+# Further `rvest` examples
+
+ - [This page](https://www.r-bloggers.com/2021/01/crawling-through-a-web-labyrinth-using-rvest/) has a good alternative `rvest` tutorial you may find helpful.
+ - [This page](https://www.datacamp.com/community/tutorials/r-web-scraping-rvest) has a good example of scraping some text data, together with some further processing and analysis (we recommend you ignore the hypothesis testing section at the end for now).
+ - [This page](https://stat4701.github.io/edav/2015/04/02/rvest_tutorial/) is a great source of **MANY** more complex examples.

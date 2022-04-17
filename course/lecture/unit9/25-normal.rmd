@@ -1,0 +1,375 @@
+---
+title: "Normal Distributions"
+author: "Bret Larget"
+output: html_document
+---
+
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+\renewcommand{\prob}{\mathsf{P}}
+
+This R Markdown document includes contributions from Professor Jessi Kehe
+
+### Setup details
+
+- You will need the package **tidyverse** for this file
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+
+- The file `ggprob.R` contains a number of functions for graphing probability distributions in a tidyverse-friendly manner.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,message=FALSE,warning=FALSE,cache=TRUE,autodep=TRUE,cache.comments=FALSE)
+library(tidyverse)
+library(egg)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+
+## Normal Distributions
+
+## Overview
+
+- Normal distributions are continuous distributions
+
+- All normal distributions have the same overall shape:  symmetric, unimodal, bell-shaped
+
+- The shape of the normal density curve is completely determined by its mean ($\mu$) and its standard deviation ($\sigma$):
+
+- The density function has the following formula
+
+$$f(x) = \frac{1}{\sigma\sqrt{2\pi}} e^{-\frac{1}{2}\left(\frac{x-\mu}{\sigma}\right)^2}$$
+
+- The mean $\mu$ is located at the center and the standard deviation $\sigma$ controls the spread.
+
+```{r normal-density}
+mu = 3
+sigma = 0.5
+mu2 = 7
+sigma2 = 2
+
+gnorm(mu=mu, sigma=sigma, a=-0, b=12, color="blue",
+      fill=NULL, title=FALSE) +
+  geom_norm_density(mu = mu2, sigma = sigma2, color = "magenta") +
+  theme_minimal()
+```
+
+
+## Normal Probabilities
+
+- Suppose that $X \sim \text{N}(\mu, \sigma)$
+    - this means the random variable $X$ follows a normal distribution with mean $\mu$ and standard deviation $\sigma$.
+
+- We can calculate probabilities for a Normal distribution using R:
+
+$$P(a \leq X \leq b)$$
+
+- This is the area under the density curve between $b$ and $a$
+- The function `pnorm()` calculates areas under normal curves.
+
+- The arguments in order are: 
+    - `q`: a location on the x axis
+    - `mean`: the mean of the distribution, or $\mu$, default value is 0
+    - `sd`: the standard deviation of the distribution, or $\sigma$, default value is 1
+    - `lower.tail`: logical to calculate area to the left, default value is `TRUE`
+    - `log.p`: logical to calculate log of the probability, default value is `FALSE`.
+    
+### Examples:
+
+$X 
+#### Area to the left
+
+- Find $\prob(X < 80)$
+
+```{r}
+## naming arguments; I usually do not
+pnorm(q=80, mean=100, sd=25)
+## without the names
+pnorm(80, 100, 25)
+
+## gnorm is defined in ggprob.R
+## you need to call source("../../scripts/ggprob.R") in set-up for this to work
+## a is the left endpoint of the interval to fill
+## b is the right endpoint of the interval to fill
+## use NULL for the default value (all the way to the left or right)
+gnorm(mu = 100, sigma = 25) +
+  geom_norm_fill(mu = 100, sigma=25, a = NULL, b = 80) +
+  theme_minimal()
+```
+
+#### Area to the right
+
+- Find $\prob(X > 90)$
+
+```{r}
+## using lower.tail
+pnorm(90, 100, 25, lower.tail = FALSE)
+## using subtraction
+1 - pnorm(90, 100, 25)
+
+## first argumment is mu, second is sigma if you do not want to specify names
+## Need to repeat mu and sigma in each level: not set in aes()
+gnorm(100, 25) +
+  geom_norm_fill(100, 25, a = 90, b = NULL) +
+  theme_minimal()
+```
+
+#### Area between two values
+
+- Find $\prob(50 < X < 120)$
+    - Note: $\prob(50 < X < 120) = \prob(X < 120) - \prob(X < 50)$
+
+```{r}
+## use subtraction
+pnorm(120, 100, 25) - pnorm(50, 100, 25)
+
+gnorm(100, 25) +
+  geom_norm_fill(100, 25, a = 50, b = 120) +
+  theme_minimal()
+```
+
+#### Two tail areas
+
+- Find $\prob(|X-100| > 30)$
+    - This is $\prob(X < 70) + \prob(X > 130)$
+
+```{r}
+## using lower.tail
+pnorm(70, 100, 25) + pnorm(130, 100, 25, lower.tail = FALSE)
+## using subtraction
+pnorm(70, 100, 25) + (1 - pnorm(130, 100, 25))
+
+gnorm(100, 25) +
+  geom_norm_fill(100, 25, a = NULL, b = 70) +
+  geom_norm_fill(100, 25, a = 130, b = NULL) +
+  theme_minimal()
+```
+
+## Standard Normal Distribution and Standardization
+
+- A *standard normal distribution* is a normal distribution with mean = 0 and standard deviation = 1
+
+```{r}
+gnorm() +
+  theme_minimal()
+```
+
+
+-  If $X \sim \text{N}(\mu, \sigma)$, then $Z = \left(\frac{X-\mu}{\sigma}\right) \sim \text{N}(0, 1)$
+
+- An implication is $\prob(X < a) = \prob\left( Z < \frac{a-\mu}{\sigma}\right)$
+
+#### Example
+
+$X \sim \text{N}(100, 25)$
+
+- Find $\prob(X < 80)$
+
+```{r}
+mu = 100
+sigma = 25
+x = 80
+z = (x-mu)/25
+
+## Using X directly
+pnorm(x, mu, sigma)
+
+## Standardizing first
+## default values for the mean and sd are 0 and 1
+pnorm(z)
+
+gnorm(mu, sigma) +
+  geom_norm_fill(mu, sigma, b=x) +
+  theme_minimal()
+
+gnorm() +
+  geom_norm_fill(b=z) +
+  theme_minimal()
+```
+
+- Notice the graphs are identical except for axis labels
+- All normal curves have exactly the same shape, but they may differ in center and scale
+
+## Normal Quantiles
+
+- The p-quantile is the location `q` where the area to the left of `q` under the normal density is equal to `p`.
+
+- The R function `qnorm()` makes these calculations.
+- Arguments in order are:
+    - `p`: the probability of the quantile
+    - `mean`: mean of the distribution, $\mu$, default is 0
+    - `sd`: standard deviation of the distribution, $\sigma$, default is 1
+    - `lower.tail`: default is `TRUE`, if `FALSE` find locations for areas to the right
+        - I **never** use this.
+    - `log.p`: default is `FALSE`, if true, it returns natural log of the quantile
+    
+### Examples
+
+$X \sim \text{N}(100, 25)$
+
+Find the 0.1, 0.25, 0.9, 0.95, 0.975, and 0.99 quantiles of the distribution.
+
+```{r}
+p = c(0.1, 0.25, 0.9, 0.95, 0.975, 0.99)
+mu = 100
+sigma = 25
+
+qnorm(p, mu, sigma)
+```
+
+### Graphs
+
+```{r, fig.height = 12}
+## use ggarrange() to display multiple plots and map() to create a list of plots
+
+normal_plots = p %>% 
+  map(~{
+    gnorm(mu, sigma) +
+    geom_norm_fill(mu, sigma, a = NULL, b = qnorm(.x, mu, sigma)) +
+    theme_minimal()
+  })
+
+ggarrange(plots = normal_plots,
+          nrow = length(p),
+          ncol = 1)
+```
+
+### Simple Normal Calculation example
+
+> The weights of packets of cookies produced by a certain manufacturer have a normal distribution with a mean of 202 g and a standard deviation of 3 g. What is the weight that should be labeled on the packet so that only 1% of the packets are underweight?
+
+- $X \sim \text{N}(202, 3)$, want $P(X < a) = 0.01$  
+
+```{r simple-normal}
+## This gives the 1st percentile of a N(202, 3) distribution
+qnorm(0.01, mean=202, sd=3, lower.tail=TRUE)
+
+## Check
+pnorm(195.021, mean=202, sd=3) # P(X <= 195.021) = .01
+```
+
+
+## Normal approximation to the binomial distribution
+
+- If $n$ is large enough, and $p$ is not too close to 0 or 1, the binomial distribution can be approximated by the normal distribution 
+- A rule of thumb for "large enough" is if $np(1-p) \ge 10$.
+    - Under the assumptions above, if $X \sim \text{Binomial}(n,p)$, then $X \stackrel{\text{approx}}{\sim}\text{N}(np, \sqrt{np(1-p)})$
+    
+
+- Here is an example where the assumption is satisfied.
+    - $n = 100$
+    - $p = 0.5$
+    - $np(1-p) = 25$
+    
+```{r normal-approx-good}
+## Assumptions satisfied
+n = 100
+p = 0.5
+mu = n*p
+sigma = sqrt(n*p*(1-p))
+
+gbinom(n, p, scale=TRUE) +
+  geom_norm_density(mu, sigma, color = "red") +
+  theme_minimal()
+```
+
+- Examine the accuracy by comparing $P(X \le k)$
+    - Exact calculation uses `pbinom(k, n, p)`
+    - Normal approximation uses `pnorm(k+0.5, mu, sigma)`
+    
+- Note the use of `k+0.5` instead of `k` for the approximation
+- The height of the binomial probability at `k` may be represented by the area of a rectangle with the same height between `k - 0.5` and `k + 0.5`.
+
+- `dbinom(k, n, p)` is approximately equal to `pnorm(k+0.5, mu, sigma) - pnorm(k, mu, sigma)`
+
+```{r normal-approx-good-graphs}
+### check the accuracy of normal approximation 
+df = tibble(k = 0:n,
+            binomial_tail = pbinom(k, n, p),
+            binomial_prob = dbinom(k, n, p),
+            normal_tail = pnorm(k+0.5, mu, sigma),
+            normal_prob = pnorm(k+0.5, mu, sigma) - pnorm(k-0.5, mu, sigma))
+
+## Accuracy of left probabilities
+ggplot(df, aes(x = binomial_tail, y = normal_tail - binomial_tail)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(label = scales::comma) +
+  xlab("Exact Binomial Probability") +
+  ylab("Error in Normal Approximation") +
+  ggtitle("Errors in Normal Approximation to Binomial",
+          subtitle = "left tail probabilities") +
+  theme_minimal()
+
+## Accuracy of individual probabilities
+ggplot(df, aes(x = binomial_prob, y = normal_prob - binomial_prob)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(label = scales::comma) +
+  xlab("Exact Binomial Probability") +
+  ylab("Error in Normal Approximation") +
+  ggtitle("Errors in Normal Approximation to Binomial",
+          subtitle = "individual outcome probabilities") +
+  theme_minimal()
+```
+
+### Example where the approximation is poor
+
+- Here is an example where the assumption is satisfied.
+    - $n = 100$
+    - $p = 0.01$
+    - $np(1-p) = 0.99$
+    
+```{r normal-approx-bad}
+## Criteria not satisfied
+n = 100
+p = 0.01
+mu = n*p
+sigma = sqrt(n*p*(1-p))
+
+gbinom(n, p, scale=TRUE) +
+  geom_norm_density(mu, sigma, color = "red") +
+  theme_minimal()
+```
+
+- Error analysis
+
+```{r normal-approx-bad-graphs}
+### check the accuracy of normal approximation 
+df = tibble(k = 0:n,
+            binomial_tail = pbinom(k, n, p),
+            binomial_prob = dbinom(k, n, p),
+            normal_tail = pnorm(k+0.5, mu, sigma),
+            normal_prob = pnorm(k+0.5, mu, sigma) - pnorm(k-0.5, mu, sigma))
+
+## Accuracy of left probabilities
+ggplot(df, aes(x = binomial_tail, y = normal_tail - binomial_tail)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(label = scales::comma) +
+  xlab("Exact Binomial Probability") +
+  ylab("Error in Normal Approximation") +
+  ggtitle("Errors in Normal Approximation to Binomial",
+          subtitle = "left tail probabilities") +
+  theme_minimal()
+
+## Accuracy of individual probabilities
+ggplot(df, aes(x = binomial_prob, y = normal_prob - binomial_prob)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(label = scales::comma) +
+  xlab("Exact Binomial Probability") +
+  ylab("Error in Normal Approximation") +
+  ggtitle("Errors in Normal Approximation to Binomial",
+          subtitle = "individual outcome probabilities") +
+  theme_minimal()
+```
+
+
+
+
+
+

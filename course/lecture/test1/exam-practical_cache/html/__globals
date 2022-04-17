@@ -1,0 +1,9 @@
+unnamed-chunk-1	!=	%>%	dim	episode	filter	read_csv	scene	select	speaker	utterance
+unnamed-chunk-2	%>%	arrange	desc	friends	group_by	head	n	select	speaker	summarize
+unnamed-chunk-3	head	print	pull	speaker_count
+unnamed-chunk-4	%>%	~	arrange	case_when	desc	friends	group_by	mutate	n	nrow	p	select	speaker	summarize	tot
+unnamed-chunk-5	%>%	~	aes	facet_wrap	filter	friends	geom_col	ggplot	ggtitle	group_by	main_characters	n	scale_x_discrete	season	speaker	summarize
+unnamed-chunk-6	%>%	contains	filter	friends	head	main_characters	mutate	season	select	speaker	str_count	text
+unnamed-chunk-7	%>%	joey.	pivot_longer	prob5	ross.
+unnamed-chunk-8	%>%	group_by	mutate	n	name	reshaped	speaker	str_sub	str_to_title	summarize
+unnamed-chunk-9	~	aes	facet_wrap	geom_col	ggplot	ggtitle	n	name	scale_x_discrete	smaller

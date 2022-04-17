@@ -1,0 +1,174 @@
+---
+title: "The Effects of Global Warming On Hurricanes"
+output: html_document
+---
+Group 311C: Kai Tsuyoshi, Jason Fu, William Fan, Fei Qin, Nihar Simhadri
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, fig.height = 3)
+library(tidyverse)
+library(lubridate)
+library(scales)
+source("../../scripts/viridis.R")
+```
+**Background** 
+
+Hurricanes are among the most intimidating weather phenomenons that thanks to our latitudinal position, has never terrorized Wisconsin. However, many of these tropical storms have caused immense damage to other states, such as Hurricane Katrina, Harvey, and Ike, usually in southern states where conditions for hurricanes to form are met more frequently. Those factors are warm waters, uniform wind, and a moist atmosphere, factors that we believe, as humans continue to produce and release green-house gases into the atmosphere, become more common. 
+Global warming has become a ticking time bomb for the planet earth, and according to NASA's climate page ^[https://climate.nasa.gov/effects/], just in the US, precipitation, sea level, and overall seasonal temperature will definitely continue to rise, and has been rising (at a significant rate) for the past half century, which we believe will create ideal situations for the formation of more severe and damaging tropical storms. We see evidence of increasing effects of global warming in the same page ^[https://climate.nasa.gov/evidence/], were it is stated that "the planet's average surface temperature has risen 2.12 degrees Fahrenheit since the late 19th century" which is attributed to carbon dioxide emissions into the atmosphere, and that the ocean, the natural cooling system of the earth, has absorbed most of this increased temperature, consequently decreasing ice mass and increasing precipitation.
+Thus, we will explore hurricane data over the course of 127 years (1893-2020) to seek to prove that since factors of hurricanes are met more with increases in green-house gases, the frequency and strength (based on monetary damages, speed, frequency and deaths caused) of hurricanes show evidence of being increasingly powerful, proving that global warming is indeed a factor. 
+
+
+**Questions of Interest**
+
+- Which season produces the most hurricanes?
+- What are the lengths of hurricanes over the years?
+  - Are there any trends in the frequency or lengths that are significant?
+- How have wind speeds of hurricanes changed over time? 
+- Which year had the most damaging hurricanes, and overall, how have monetary damages trended over the years?
+- Which year had the most hurricane related fatalities?
+
+
+**Data**
+
+The data used was extracted by a python program from a Wikipedia page ^[https://en.wikipedia.org/wiki/List_of_United_States_hurricanes] about hurricanes and was collected for a project from CS220 about hurricanes, made available by the instructors ^[https://github.com/msyamkumar/cs220-f21-projects/tree/main/p6]. This data is a sample of the largest and most damaging hurricanes that were dubbed with a name, and other smaller, more insignificant hurricanes, or ones that did not receive a name, were excluded. It is missing a sizable chunk of years in the middle due to a lack of hurricanes that year, but some years have multiple. Plus, Wikipedia tends to have a bad reputation in academics as a informational resource, however, when individual hurricanes are cross-checked with other resources of more "trustworthiness", the data can be confirmed as very accurate.
+The table below gives an idea of the variables included in the data set, as well as the format each is in.
+
+```{r, echo = FALSE}
+hurricanes = read_csv("hurricanes.csv")
+print(head(hurricanes))
+```
+
+There are six variables: name, date formed (in mm/dd/yyyy), date dissipated (in mm/dd/yyyy), speed(mph), damage (in dollars followed by K, M, or B to signify thousand, million, and billion), and deaths. It should also be noted that most of the hurricane speeds are rounded quite a bit, as that information is difficult to accurately measure, especially for the greater half of the data set, where the technology for such measurements did not exist or were not as accurate as modern times. Thus, most of the speeds are rounded to multiples of five. With this data in hand, we can now begin manipulating it to display various variable relationships.
+
+
+**Methods** 
+
+To begin, the season containing the most hurricanes is determined. This is accomplished by taking each date a hurricane was formed, and split them into month, day, and year, from which a season can be assigned, split into three-month periods, with March-May as Spring, June-August as Summer, September-November as Fall, and December-February as Winter. Visualizing this information, we can now see which season produces the most hurricanes. Additionally, we can subtract the date dissipated from the date formed, which we now establish as the length of each hurricane, and in combination with the prior seasonal categorization, create a bar graph visual displaying the total length of hurricanes in each year and its frequency (color-coded by season within that year). 
+
+Next, the average speeds of hurricanes of each year is taken and visualized with bars similar to the prior question. We can now determine trends in the average lengths of hurricanes and whether those trends correlate with our findings of other questions. This shows the relationship between the progression of years and average speeds of hurricanes. 
+
+To tackle the third question of exploring the monetary damages associated with hurricanes and finding significant trends, the values of the damage column must be converted to numerical values, rather than strings, which make looking through the data easy, but are useless when attempting to manipulate. Each damage observation contained either a “K” (Thousand), “M” (Million), or a “B” (Billion), which were removed, and the remaining value was multiplied by the numerical version of what each letter signified, yielding a malleable numerical variable column. The average damage of each year was calculated, and visualized per year by a line graph, with an accompanying trendline to indicate any significant patterns. 
+
+In similar fashion, the death toll per year was summarized, and a line graph created with a trend line to be compared with the monetary damage graph to determine whether there existed a correlation between the damage of each hurricane and the amount of deaths. 
+
+
+
+**Analysis**  
+```{r, include = FALSE}
+hurricanes = hurricanes %>% 
+  mutate(formed = as.Date(formed, "%m/%d/%Y")) %>% 
+  mutate(dissipated = as.Date(dissipated, "%m/%d/%Y")) %>% 
+  mutate(year = year(formed), month = month(formed, label = TRUE), day = mday(formed), wday = wday(formed, label = TRUE)) %>% 
+  mutate(season = case_when(month %in% c("Mar", "Apr", "May") ~ "Spring",
+            month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+            month %in% c("Sep", "Oct", "Nov") ~ "Fall",
+            month %in% c("Dec", "Jan", "Feb") ~ "Winter")) %>% 
+  mutate(length = as.numeric(difftime(dissipated, formed))) 
+  
+  
+
+hurricanes
+```
+
+```{r, echo = FALSE}
+ggplot(hurricanes, aes(x = season, fill = season)) +
+  geom_bar() +
+  xlab("Season") +
+  ylab("Number of Hurricanes") +
+  ggtitle("Figure 1: Number of Hurricanes by Season")
+  
+```
+
+Here, it is safely assumed that summer and fall are the most common seasons during which hurricanes form.
+
+
+
+
+```{r, echo = FALSE}
+seasonal = hurricanes %>%
+  mutate(duration=as.numeric(difftime(hurricanes$dissipated ,hurricanes$formed)))
+
+
+ggplot(seasonal, aes(x = year, y = duration , fill = season)) +
+  geom_col() +
+  xlab("Year (1893-2020)") +
+  ylab("Length (Days)") +
+  ggtitle("Figure 2: Duration of Hurricanes by Year Segmented by Season")
+
+
+```
+
+It is observed that there is a gradual cluster forming of years containing hurricane seasons of significant length as time moves closer and closer to the present day, with some years having over one-month-long hurricane seasons, with the longest in the early 2000s, spanning almost three months. The clustering effect indicates increased frequency of years that experience a tropical storm of significance (as previously stated, minor storms not deserving names have been excluded from the data set). 
+
+
+
+
+```{r, echo = FALSE}
+speed = hurricanes %>% 
+  group_by(year) %>% 
+  summarize(name, year, mph = mean(mph)) %>% 
+  arrange(year)
+
+ggplot(speed, aes(x = year, y = mph, fill = year)) +
+  geom_col() +
+  xlab("Year (1893-2020)") +
+  ylab("Speed (mph)") +
+  ggtitle("Figure 3:Hurricane speeds over the years")
+```
+
+Above, the frequency of observations increase as time increases, and wind speed correlates positively to this as well. The fastest storms were observed in the early 2000s, at over 800 mph. 
+
+
+
+
+```{r, echo = FALSE, warning = FALSE}
+damages = hurricanes %>% 
+  mutate(damage = case_when(
+    str_detect(damage, "K$") ~ 1000 * as.numeric(str_remove(damage, "K$")),
+    str_detect(damage, "M$") ~ 1000000 * as.numeric(str_remove(damage, "M$")),
+    str_detect(damage, "B$") ~ 1000000000 * as.numeric(str_remove(damage, "B$"))
+)) %>% 
+  group_by(year) %>%
+  summarize(damage = mean(damage)) %>%
+  arrange(desc(damage))
+
+head(damages)
+
+ggplot(damages, aes(x = year, y = damage/1000000000, color = year)) +
+  geom_line() +
+  geom_smooth(se=FALSE) +
+  xlab("Year (1893-2020)") +
+  ylab("Damage (In Billions of Dollars)") +
+  ggtitle("Figure 4: Average Monetary Damage Caused by Year")
+```
+
+The graph displays an upward trend in damage over the years, and at an exponential rate. Up until the 1960s, almost no damage can be seen, which is testament to simply how costly the most recent storms have been in comparison. 2017 was the costliest year by far, with hurricanes Harvey, Maria, and Irma being the massive players contributing to the mind-boggling number of 74 billion dollars in damage, on average for that year. 
+
+
+
+
+```{r, echo = FALSE}
+deaths = hurricanes %>% 
+  group_by(year) %>% 
+  summarize(deaths) %>% 
+  arrange(year)
+
+ggplot(deaths, aes(x = year, y = deaths, color = year)) +
+  geom_line() +
+  geom_smooth(se=FALSE) +
+  xlab("Year (1893-2020)") +
+  ylab("Deaths") +
+  ggtitle("Figure 5: Deaths Per Year")
+
+```
+
+Here, it can be observed that deaths as a result of hurricanes have been decreasing over the course of the observations. Most significantly, there is a large spike in death toll in the early 1900s, and afterwards, decreases exponentially until around the 1990s, after which a small but noticeable increase in deaths can be seen. This could be attributed to the aforementioned top ranking years in costs, where those suffering the most monetary damages also suffered staggering fatalities, which the trend line downplays as the surrounding  years' small death tolls suppress the regression line.  
+
+
+
+**Conclusion** 
+
+
+From the Figure 1, there is sufficient reason to believe that the initial assumption that hurricanes require warm, moist conditions to form is true, as it clearly depicts summer and fall (included most likely as summer temperatures would be retained in the ocean, which is most likely why spring was very small) being the most common hurricane seasons. From there, the fact that frequency, length (from Figure 2) and speed (from Figure 3) all increase in similar fashion as time passes are significant affirmation that hurricanes are able to form more often, and ideal condition to maintain and grow upon itself met as well. 
+We can observe an increasing severity of tropical storms is Figure 4, strongly indicated by a massive increase in economic and financial damages as a result of hurricanes. However, there are a few factors that may need to be considered and factored in future explorations, those being that inflation was not factored into the calculations, and each monetary value is that value at that certain time. Another detail is that more expensive housing and critical industries tend to be located near water fronts (where the majority of damage occur) such as trading ports, warehouses for imports, luxury mansions and seaside houses. Those may be inflating the costs of each hurricane, and results should be interpreted with them in mind. Despite this, even factoring these into calculations, it can most likely be assumed that although the numbers may not be as large, the overall pattern would remain the same. 
+Shockingly, the correlation between monetary damage and fatalities were not as linear as expected, rather, for the majority of Figure 4 and 5, they seemed to have a negative correlation, with Figure 4 increasing exponentially as years increased, and Figure 5 decreasing exponentially. However, considering the development and improvements in weather forecasting technology and climatology, the decreases in deaths should be expected. Such societal improvements would allow speedier and better prepared evacuations, and with phones and personal devices connected to the internet becoming more common, such news can be broadcasted much quicker than the early 1900s, where the large spike in deaths could be observed. However, the main point of interest brought about in Figure 5 is the slight increase that can be seen in the last forty or so years. This is indicative of the severity of recent storms despite the aforementioned advancements, and having access to the best, most accurate weather detection technology and near instant communication. Although at first glance, the two figures seem to contradict each other, but in reality emphasize the results observed in each. 
+Based on our findings, we can confidently say that frequency, length, speed, causal damage and death all provide evidence towards more powerful tropical storms becoming more common, and can be attributed to global warming due to the perfect conditions the green-house gases trapped in our atmosphere present. Moving forward, it can be safely assumed that the same patterns can be seen, if not more extreme, unless quick changes are made to reduce the carbon footprint of large industries and the human populous in general. Otherwise, hurricanes on the level of Katrina and Harvey could become the annual norm, which is a terrifying thought, and might even reach further inland, maybe affecting this dear state of Wisconsin. 

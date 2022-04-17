@@ -1,0 +1,323 @@
+---
+title: "Chimpanzees, Likelihood, and Likelihood Ratio Tests"
+output:
+  html_document: default
+---
+
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+\renewcommand{\prob}{\mathsf{P}}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(tidymodels)
+library(kableExtra)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Chimpanzee Prosocial Choice Experiment Summary
+
+- In the chimpanzee prosocial choice experiment,
+seven chimpanzees were involved in sessions,
+some with partners,
+and some without partners,
+where they typically made 30 choices per session
+of the pro-social or selfish tokens.
+- We summarize the data for the experiments with partners for each chimpanzee.
+
+```{r read-data}
+chimps_orig = read_csv("../../data/chimpanzee.csv")
+
+chimps = chimps_orig %>%
+  filter(partner != "none") %>% 
+  group_by(actor) %>% 
+  summarize(prosocial = sum(prosocial),
+            selfish = sum(selfish),
+            n = prosocial + selfish,
+            phat = prosocial / n)
+
+chimps %>% 
+  print()
+```
+
+- We see that the chimpanzees make the pro-social choice at different relative frequencies, from a low under 53% to a high nearly 67%.
+- Is there enough evidence here to conclude that the chimpanzees do not make the pro-social choice with the same probability long term?
+
+## Confidence Intervals
+
+- We begin our exploration by computing the Agresti-Coull 95% confidence intervals for each chimpanzee and tabulating and graphing them.
+
+```{r}
+z = qnorm(0.975)
+
+chimps_ci = chimps %>% 
+  mutate(ptilde = (prosocial+2)/(n+4),
+         se = sqrt(ptilde*(1-ptilde)/(n+4)),
+         ci_a = ptilde - z*se,
+         ci_b = ptilde + z*se)
+
+chimps_ci %>% 
+#  select(actor, n, prosocial, selfish, phat) %>% 
+  mutate(phat = round(phat,3)) %>% 
+  kable() %>% 
+  kable_styling(position = "left", full_width = FALSE,
+                bootstrap_options = c("striped", "condensed"))
+
+ggplot(chimps_ci) +
+  geom_pointrange(aes(x = actor, y = ptilde, ymin = ci_a, ymax = ci_b)) +
+  xlab("Chimpanzee Label") +
+  ylab("Prosocial Choice Probability") +
+  ggtitle("Prosocial Choice Experiment with Partners") +
+  theme_minimal()
+```
+
+- It does seem plausible that all chimpanzees could make the pro-social choice a probability near 0.6, but we can test this more formally.
+
+## Hypothesis Test
+
+### Model
+
+- Let $X_i$ and $n_i$ be the number of pro-social choices made by each chimpanzee from the $n_i$ trials with a partner for $i=1,\ldots,7$ for the seven chimpanzzes which served as actor in the experiment, in order.
+- Model $X_i \mid p_i \sim \text{Binomial}(n_i, p_i)$.
+- The null hypothesis is $p_1 = \cdots = p_7$, all of the probabilities are the same.
+- The alternative hypothesis is that each $p_i$ could have its own value.
+
+$$
+H_0: p_1 = \cdots = p_7 \\
+H_a: \text{not}~ p_1 = \cdots = p_7
+$$
+
+### Test Statistic
+
+- We use the concept of likelihood to define a test statistic.
+- The likelihood is the product of seven binomial probabilities.
+
+$$
+L = \binom{n_1}{x_1} p_1^{x_1}(1-p_1)^{n_1 - x_1} \times \cdots \times
+\binom{n_7}{x_7} p_7^{x_7}(1-p_7)^{n_7 - x_7}
+$$
+or
+$$
+L = \prod_{i=1}^7 \binom{n_i}{x_i} p_i^{x_i}(1-p_i)^{n_i - x_i}
+$$
+
+- Under the null hypothesis, we want to make $L$ as large as possible under the restriction that $p_1 = \cdots = p_7$
+    - Call this optimal value $L_0$
+- Under the alternative hypothesis, each $p_i$ may be given its own value to maximize $L$
+    - Call this $L_1$
+- Our test statistic can be the ratio $L_1/L_0$.
+- The larger the ratio, the more likely the data is allowing each $p_i$ to be different than when forcing them to all be equal.
+- For reasons we will explain later, we typically transform this ratio by taking natural logs and multiplying by 2
+- The *likelihood ratio test statistic* is
+$$
+2(\ln L_1 - \ln L_0) = -2(\ln L_0 - \ln L_1)
+$$
+- where $\ln L_0$ maximizes the log-likelihood under the null hypothesis and $\ln L_1$ maximizes the log-likelihood under the alternative hypothesis.
+
+### Parameter Estimation
+
+- Under the null hypothesis, we pool all of the samples together to estimate a common $p$.
+
+$$
+\bar{p} = \frac{x_1 + \cdots + x_7}{n_1 + \cdots + n_7}
+$$
+
+- Under the alternative hypothesis, each $p_i$ is estimated by its own sample proportion
+
+- Here, we calculate the log-likelihood under each hypothesis and then calculate the test statistic
+
+#### Null Hypothesis
+
+- Estimate the common $p$
+
+```{r}
+pbar = chimps %>% 
+  summarize(prosocial = sum(prosocial),
+            n = sum(n),
+            p = prosocial/n)
+
+pbar_0 = pbar %>% 
+  pull(p)
+
+pbar_0
+```
+
+- Calculate the log-likelihood by adding columns to `chimps` and then summing the log-likelihoods
+
+```{r}
+chimps_lrt = chimps %>% 
+  mutate(logl_0 = dbinom(prosocial, n, prob = pbar_0, log = TRUE),
+         logl_1 = dbinom(prosocial, n, prob = phat, log = TRUE))
+
+chimps_lrt %>% 
+  print(width = Inf)
+
+chimps_lrt = chimps_lrt %>% 
+  summarize(logl_0 = sum(logl_0),
+            logl_1 = sum(logl_1),
+            lrt = 2 * (logl_1 - logl_0))
+
+chimps_lrt
+```
+
+- Our test statistic has the value $`r round(chimps_lrt$lrt, 3)`$
+- How do we get a p-value?
+
+### P-value
+
+- Begin by determining the distribution of the test statistic if the data were simulated when the null hypothesis was true.
+    - Simulate $X^*_1, \ldots, X^*_7$ from binomial distributions with sizes $n_1, \ldots, n_7$ but a common $p$.
+    - Calculate the test statistic for the simulated data
+    - Repeat many times.
+    
+- Here is a function to calculate the LRT statistic
+
+```{r}
+## df should have columns
+## - prosocial,
+## - selfish, and
+## - n
+
+lrt_stat_vector = function(df)
+{
+  x = df$prosocial
+  n = df$n
+  p_0 = sum(x)/sum(n)
+  p_hat = x/n
+  log_L0 = sum(dbinom(x, n, p_0, log=TRUE))
+  log_L1 = sum(dbinom(x, n, p_hat, log=TRUE))
+  return( 2*(log_L1 - log_L0) )
+}
+
+```
+
+- Code for the randomization
+
+```{r}
+lrt_randomization = function(df, B = 10000)
+{
+  m = nrow(df)
+  p_0 = df %>%
+    summarize(p_0 = sum(prosocial)/sum(n)) %>%
+    pull(p_0)
+  
+  lrt = numeric(B)
+  for ( i in 1:B )
+  {
+    df_rand = df %>%
+      mutate(prosocial = rbinom(m,n,p_0))
+    lrt[i] = lrt_stat_vector(df_rand)
+  }
+  return( lrt )
+}
+```
+
+- Do the simulation
+
+```{r}
+set.seed(20211208)
+sim_out = tibble(
+  lrt = chimps %>%
+    select(prosocial, n) %>%
+    lrt_randomization()
+)
+
+head(sim_out)
+```
+
+- The p-value is the proportion of simulated test statistics greater than or equal to the value from the original data
+
+```{r}
+## real data
+lrt_real = lrt_stat_vector(chimps)
+lrt_real
+
+## p-value
+p_value_sim = mean(sim_out$lrt >= lrt_real)
+p_value_sim
+```
+
+- The p-value of 0.14 is about 1 in 7, and is not unusually small.
+- The data is consistent with the null hypothesis
+
+> The evidence is consistent with the conclusion that different chimpanzees have the same probability of making the pro-social choice under the experimental conditions ($p = 0.146$, simulation-based likelihood ratio test)
+
+- Graph an estimate of the simulated density.
+
+```{r}
+ggplot(sim_out, aes(x = lrt)) +
+  geom_density(fill = "skyblue") +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = lrt_real, linetype = "dashed") +
+  xlab("LRT Test Statistic") +
+  ylab("") +
+  ggtitle("Simulation-based Binomial Null LRT Distribution") +
+  theme_minimal() 
+```
+
+## Chi-square Distribution
+
+- The simulated density is not normal as the domain cannot go below zero and the curve is skewed right
+- Theory says the distribution from likelihood ratio tests is approximately *chi-squared* with a degrees of freedom equal to the difference in the number of free parameters in the null and alternative models.
+    - The null model required the estimation of a single parameter, $\bar{p}$
+    - The alternative model estimated 7 different parameters
+    - The difference is $6 = 7 - 1$
+
+- Add an overlay of a chi-square distribution with 6 degrees of freedom to the simulated density
+
+```{r}
+ggplot(sim_out, aes(x = lrt)) +
+  geom_density(fill = "skyblue") +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = lrt_real, linetype = "dashed") +
+  geom_chisq_density(6, color = "red") +
+  xlab("LRT Test Statistic") +
+  ylab("") +
+  ggtitle("Binomial Null LRT Distribution",
+          subtitle = "Added Red Chi-square Density") +
+  theme_minimal() 
+```
+
+- We can use `pchisq()` to find the area to the right of the test statistic under this red density.
+- Compare to the simulation-based value.
+
+```{r}
+p_value_chisq = 1 - pchisq(lrt_real, 6)
+p_value_chisq
+## compare to simulation
+p_value_sim
+```
+
+- The simulation-based and theory-based p-values are very similar.
+
+### Chi-square Theory
+
+- The chi-square distribution with $\nu$ degrees of freedom is the distribution you get by generating $\nu$ independent standard normal random variables, squaring them, and summing.
+
+$$
+X^2 = Z_1^2 + \cdots + Z_{\nu}^2
+$$
+
+- The mean is $\nu$ times $\E(Z_i^2)$, the variance of the standard normal distribution, which is $\nu \times 1 = \nu$.
+- The variance is $2\nu$ which requires more theory than we have to derive.
+- The right-skew is always there, but lessens as the degrees of freedom $\nu$ increases
+
+```{r}
+sim_out %>% 
+  summarize(mean_sim = mean(lrt),
+            mean_theory = 6,
+            sd_sim = sd(lrt),
+            sd_theory = sqrt(2*6))
+```
+
+## Summary
+
+- Here, we used the *likelihood ratio test* to test a null model which was a special case of the more general alternative hypothesis
+- In our specific example, the model was binomial for seven independent random variables
+- The test statistic has an approximate null chi-square sampling distribution with degrees of freedom equal to the difference in number of free parameters estimated
+- This same approach is far more general and can work whenever parameters may be estimated by maximum likelihood
+- We multiplied the difference in log-likelihoods by 2 in order for the chi-square distribution to match

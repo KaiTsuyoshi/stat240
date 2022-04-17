@@ -1,0 +1,203 @@
+---
+author: Kai Tsuyoshi
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(lubridate)
+```
+
+## Assignment 1
+
+#### Due Friday, September 17, 2021, at 11:59 PM
+
+### Preliminaries
+
+- Verify this file (`hw01.Rmd`) is in the directory `COURSE/hw/hw01/`.
+- Set the working directory to the same.
+
+## Problems
+
+### 1
+
+Use R to sum up the numbers from 1 to 100 by:
+
+- creating a vector with these numbers
+- using the base R function `sum()` to calculate their sum.
+
+```{r}
+sum(1:100)
+```
+
+The sum of the integers from 1 to 100 is:
+
+5050
+
+### 2
+
+The following R chunk will set a random seed and then create a vector of random numbers.
+By setting the random seed, each person's vector will be identical as all will use the same stream of computer-generated random numbers.
+
+```{r}
+set.seed(20210910)
+v2 = runif(10)
+v2
+```
+
+Create a vector named `v2_a` from `v2` by dividing each value by the sum of these ten values. *Note: this re-weighting results in a new vector where the values are proportional to the originals, but sum to one.*
+
+```{r}
+v2_a = v2/sum(v2)
+v2_a
+
+```
+
+#### 2A
+
+What is the first element of `v2_a`?
+```{r}
+v2_a[1]
+```
+
+0.1087301
+
+#### 2B
+
+What is the maximum value of `v2_a`?
+```{r}
+max(v2_a)
+```
+
+0.1700408
+
+#### 2C
+
+What is the standard deviation of `v2_a`? Use the function `sd()`.
+(The standard deviation is a numerical summary of a sample of numbers that measures the size of the spread around their mean.)
+```{r}
+sd(v2_a)
+```
+
+0.06326752
+
+#### 2D
+
+Verify that the sum of `v2_a` is, in fact, equal to 1.
+
+```{r}
+sum(v2_a)
+```
+
+### 3
+
+This code will generate a sample of 100 randomly generated standard normal random variables saved as a vector `x`.
+
+```{r}
+set.seed(100)
+x = rnorm(100)
+```
+
+Use R to calculate the the sum of the squares of these values.
+
+$$
+\sum_{i=1}^{100} x_i^2
+$$
+
+(*The previous code is an example of using LaTeX within R Markdown to create a formatted mathematical expression in the output HTML document.*)
+
+```{r}
+sum(x^2)
+```
+
+The sum of squared values is:
+
+103.144
+
+### 4
+
+This block of code reads in the Lake Mendota winter freeze data.
+
+```{r}
+mendota = read_csv("../../data/lake-mendota-winters-2021.csv")
+```
+
+### 4A
+
+Create a vector named `y` which is the duration of total days that Lake Mendota is closed by ice for each winter in the data set.
+
+Calculate the mean of these values.
+
+```{r}
+y = c(mendota$duration)
+y
+```
+
+What is the mean?
+
+```{r}
+mean(y)
+```
+
+102.0422
+
+### 4B
+
+Create a vector named `r` by taking `y` and subtracting from each value the mean you computed in the previous part.
+
+```{r}
+r=c(y-mean(y))
+r
+```
+
+What is the mean of `r`? 
+
+```{r}
+mean(r)
+```
+
+-4.978677e-15
+
+What are the standard deviations of `r` and `y`?
+
+```{r}
+sd(r)
+```
+```{r}
+sd(y)
+```
+
+Both are 19.64915
+
+### 4C
+
+Create a vector named `z` by taking `r` and dividing each element by the standard deviation of `r` (computed with `sd()`).
+
+```{r}
+z = c(r/sd(r))
+z
+```
+
+What are the mean, median, and standard deviation of `z`?
+
+```{r}
+mean(z)
+```
+
+mean = -2.525642e-16
+
+```{r}
+median(z)
+```
+
+median = 0.09963949
+
+```{r}
+sd(z)
+```
+
+standard deviation = 1 
+
+
+

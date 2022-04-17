@@ -1,0 +1,154 @@
+---
+title: "STAT 240 Discussion 3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+library(tidyverse)
+```
+
+
+## Group 6
+
+**Remember**: you MUST complete this discussion in your assigned groups! If you are not able to be present, please try to join your group over Zoom (links provided in Canvas).
+
+## Members Present
+
+- Reena Singhal, **Kai Tsuyoshi**, Fei Qin, Jiahua Pan
+
+## Members Absent
+
+Malavika Unnikrishnan
+
+## Questions
+
+### 1
+
+The code below modifies the exoplanet data table, `planets`.  Review the code and then answer the question below the code chunk.  Some questions will require additional code to answer them.
+
+```{r}
+
+planets = read_csv("../../data/exoplanets_default_2021-06-15.csv",
+                   skip = 100) %>% 
+  select(pl_name, hostname, discoverymethod, disc_year, sy_pnum, pl_rade, pl_bmasse) %>%
+  rename(planet = pl_name,
+         star = hostname,
+         method = discoverymethod,
+         year = disc_year,
+         number = sy_pnum,
+         radius = pl_rade,
+         mass = pl_bmasse) 
+
+planets %>% 
+  filter(year %in% c(2000,2005,2010,2015)) %>%
+  count(method) 
+
+
+   
+```
+
+>  (a) What does the `skip = 100` argument to `read_csv()` do? Why is it necessary?
+
+Skips the first 100 rows due to NA values which throw off calculations
+
+>  (b)  What does the `rename()` function do to the data frame?
+
+renames column names to better variable names that are easier to read
+
+>  (c)  After running the code chunk, how many observations are in the data set?
+
+4401
+
+>  (d) What are the combined number of exoplanets discovered in each of the years 2000, 2005, 2010, and 2015?
+
+306
+
+**For the remaining questions, use the `planets` data from Question 1.**
+
+### 2
+
+> Which methods are most commonly used to discover exoplanets?
+
+- Create a bar graph that has the methods of exoplanet discovery on the x axis and counts of the number of planets discovered by each on the y axis.
+- Give the graph a title and choose appropriate axis labels.
+- The default graph might not have room to fit the tick labels without overwriting.
+    - Use the function `theme()` to add a layer to the plot to rotate the axis labels
+    - Try adding `theme( axis.text.x = element_text(angle=45, hjust=1) )` to the base plot
+        - the `angle=45` argument rotates the labels by 45 degrees
+        - the `hjust=1` argument justifies the end of each label at the same location
+        
+```{r}
+ggplot(data= planets) + 
+  geom_bar(mapping=aes(x=method)) +
+  theme (axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  xlab("Method of discovery")+
+  ylab("Count")+
+  ggtitle("Exoplanet Discover Method Frequency")
+```
+
+
+### 3
+
+> Create a summary data frame with one row for each method which counts the number of planets disovered by that method.
+Arrange the rows from most to least planets discovered.
+There will be a column for method and a column for the counts.
+
+```{r}
+summary = planets %>%
+  select (method, number) %>%
+  group_by(method) %>%
+  summarize(total= sum(number)) %>%
+  arrange(desc(total))
+summary
+  
+```
+
+
+
+### 4
+
+> Create a data set with one row per star and a column for the number of planets found by each star. Arrange the rows from the most to the least.
+How many stars are there in the data set? 
+Which star has the most discovered exoplanets and how many are there?
+
+```{r}
+stars = planets %>%
+  select(star, number) %>%
+  group_by(star) %>%
+  summarize(total = sum(number)) %>%
+  arrange(desc(total))
+stars
+  
+```
+
+3271 Stars
+
+KOI-351 with 64 planets
+
+### 5
+
+> What are the mean and median number of confirmed exoplanets around each star in this data base?
+
+- Note: sometimes when using the `group_by()` command, the grouping persists. - You can remove unwanted grouping with the `ungroup()` command.
+
+```{r}
+stars = planets %>%
+  select(star, number) %>%
+  group_by(star) %>%
+  summarize(total = sum(number)) %>%
+  arrange(mean(total))
+stars
+
+```
+
+```{r}
+stars = planets %>%
+  select(star, number) %>%
+  group_by(star) %>%
+  summarize(total = sum(number)) %>%
+  arrange(median(total))
+stars
+
+```
+

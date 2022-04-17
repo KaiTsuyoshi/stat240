@@ -1,0 +1,224 @@
+---
+title: "Introduction to Correlation"
+author: "Bret Larget"
+output: html_document
+---
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Lion Ages
+
+- Biologists are interested in examining the relationship between the age of lions and the proportion of their nose that is black.
+- Data is collected from a group of lions whose ages are known.
+- The hope is to develop a model to predict the age of lions with unknown age from something that can be measured from a distance with minimal interference from an image of the lion's face.
+- Experts use multiple characteristics in addition to nose color, such as mane length, teeth wear, and facial scarring.
+
+![Image of Lion Noses from https://www.panthera.org/blog/2016/08/17/how-age-lion](./lions-image.png)
+
+### Data
+
+```{r}
+lions = read_csv("../../data/lions.csv") %>% 
+  rename(black = proportion.black)
+```
+
+### Numerical Summary
+
+- Calculate:
+    - the number of cases;
+    - means and standard deviations of each variable;
+    - the correlation (more on this below)
+
+```{r}
+## first few rows
+head(lions)
+
+lions_sum = lions %>% 
+  summarize(across(everything(), list(mean = mean, sd = sd)),
+            n = n(),
+            r = cor(age, black)) %>% 
+  relocate(n)
+
+lions_sum            
+```
+
+### Graphical Summary
+
+- We use a scatter plot to show the relationship between these variables
+- Add a simple linear regression line with `geom_smooth()`.
+
+```{r}
+ggplot(lions, aes(x = age, y = black)) +
+  geom_point() +
+  xlab("Age (years)") +
+  ylab("Percentage Black") +
+  scale_y_continuous(labels = scales::percent) +
+  ggtitle("Ages and Lion Nose Color") +
+  geom_smooth(se = FALSE, method = "lm")
+```
+
+- We see a positive relationship between `age` and the proportion of the nose which is black.
+    - As lions get older, the percentage of the nose that is black tends to increase
+    - There is a fair amount of variability in this relationship, though
+- How can we measure the strength of a linear relationship?
+
+### The Correlation Coefficient r
+
+- The *correlation coefficient* `r` is a measure of the strength of a linear relationship between two quantitative variables.
+- The formula is
+
+$$
+r = \mathsf{Corr}(x,y) = \frac{1}{n-1}\sum_{i=1}^n
+\left(\frac{x_i - \bar{x}}{s_x} \right)
+\left(\frac{y_i - \bar{y}}{s_y} \right)
+$$
+
+- From the equation, note that:
+    - $\mathsf{Corr}(x,y) = \mathsf{Corr}(y,x)$
+        - The order of the variables does not matter
+    - The individual values of $x$ and $y$ are standardized by subtracting the mean and dividing by the standard deviation (z scores)
+    - $r$ is the average of the product of these standardized values
+        - The $n-1$ in the denominator is because sample standard deviations $s_x$ and $s_y$ use $n-1$.
+        - If we instead used the population standard deviation formula with $n$ and not $n-1$, then there would be a leading $1/n$ and not $1/(n-1)$
+    - $r$ is unitless
+        - Any units in $x$ and $y$ are eliminated in standardization
+        - Changing the scale of measurement of $x$ and/or $y$ does not change $r$
+    - For cases where $x$ and $y$ are both greater than their mean or less than their mean, the sum gets bigger as the product is positive
+    - For cases where one of $x$ and $y$ is greater than its mean and the other is less than it mean, the product is negative and the sum is made smaller
+- Not obvious from the equation, but provable with a mathematical argument is that $-1 \le r \le 1$.
+- $r=1$ if and only if the points fall exactly on a line with a positive slope
+- $r = -1$ if and only if the points fall exactly on a line with a negative slope
+
+```{r}
+ggplot(lions, aes(x = age, y = black)) +
+  geom_point() +
+  xlab("Age (years)") +
+  ylab("Percentage Black") +
+  scale_y_continuous(labels = scales::percent) +
+  ggtitle("Ages and Lion Nose Color",
+          subtitle = "Red dashed lines at variable means") +
+  geom_vline(xintercept = lions_sum$age_mean, color = "red", linetype = "dashed") +
+  geom_hline(yintercept = lions_sum$black_mean, color = "red", linetype = "dashed")
+```
+
+- Almost all points are in the upper right or lower left, so $r > 0$.
+- The points are not on exactly straight line with a positive slope, so $r < 1$.
+
+### Calculation
+
+- The built-in R function `cor()` calculate the correlation coefficient.
+
+```{r}
+x = lions %>% pull(age)
+y = lions %>% pull(black)
+cor(x,y)
+```
+
+- Demonstrate with a manual calculation
+
+```{r}
+lions_calc = lions %>% 
+  mutate(z_age = (age - mean(age))/sd(age),
+         z_black = (black - mean(black))/sd(black),
+         prod = z_age * z_black)
+
+lions_calc %>% 
+  print(n = Inf)
+
+lions_calc %>% 
+  summarize(r = sum(prod) / (nrow(.) - 1)) %>% 
+  pull(r)
+```
+
+### Fake Data Examples
+
+```{r, echo = FALSE}
+x1 = seq(-2,2,0.05)
+y1 = x1^2
+x2 = x1[x1>0]
+y2 = y1[x1>0]
+x3 = x1[x1<0]
+y3 = y1[x1<0]
+x4 = x1
+y4 = x4 + rnorm(length(x4),0,0.3)
+x5 = x1
+y5 = x5 + rnorm(length(x5),0,4)
+
+cor_plot = function(x,y)
+{
+  ggplot(tibble(x,y), aes(x=x, y=y)) +
+    geom_point() +
+    geom_smooth(se = FALSE, method = "lm") +
+    geom_vline(xintercept = mean(x), color = "red", linetype = "dashed") +
+    geom_hline(yintercept = mean(y), color = "red", linetype = "dashed") +
+    ggtitle(str_c("r = ", round(cor(x,y),2)))
+}
+```
+
+```{r, fig.height = 4}
+cor_plot(x1,y1)
+```
+
+- $r=0$, but there is a deterministic non-linear relationship between $x$ and $y$
+
+> $r=0$ and there is a weak linear relationship but a strong non-linear relationship between $x$ and $y$
+
+```{r, fig.height = 4}
+cor_plot(x2,y2)
+```
+
+- $r$ near one
+- the points are more tightly clustered around the blue line with a positive slope than around the horizontal red dashed line
+- but, a non-linear relationship is superior to a simpler linear relationship
+
+> $r=0.97$ and there is a strong linear relationship but an even stronger non-linear relationship between $x$ and $y$
+
+```{r, fig.height = 4}
+cor_plot(x3,y3)
+```
+
+- $r$ is near $-1$
+- the points are more tightly clustered around the blue line with a negative slope than around the horizontal red dashed line
+- but, a non-linear relationship is superior to a simpler linear relationship
+
+> $r=-0.97$ and there is a strong linear relationship but an even stronger non-linear relationship between $x$ and $y$
+
+```{r, fig.height = 4}
+cor_plot(x4,y4)
+```
+
+- $r$ near one
+- the points are more tightly clustered around the blue line with a positive slope than around the horizontal red dashed line
+- a simpler linear relationship is an adequate summary of the data
+    - there is no non-linear relationship that is a substantially better fit to the data
+    
+> $r=0.97$ and there is a strong linear relationship between $x$ and $y$ which is not substantially improved by a nonlinear relationship
+
+```{r, fig.height = 4}
+cor_plot(x5,y5)
+```
+
+- $r$ is small and positive
+- the points are more tightly clustered around the blue line with a positive slope than around the horizontal red dashed line, but only by a smallish amount
+- the strength of the linear relationship is weak
+- a simpler linear relationship is an adequate summary of the data
+    - there is no non-linear relationship that is a substantially better fit to the data   
+    
+> $r=0.25$ and there is a weak linear relationship between $x$ and $y$ which is not substantially improved by a nonlinear relationship
+
+#### The Take-home Message
+
+- $r$ is a measure of the strength of the **linear** relationship between two quantitative variables
+- The value of $r$ alone says nothing about the strength of any potential non-linear relationships
+- Graph your data!

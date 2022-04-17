@@ -1,0 +1,237 @@
+---
+title: "An Introduction to ggplot2"
+author: "Bret Larget"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+## Hash tags allow you to comment-out the code; you can use multiple depending on your preference but only one is needed.
+## Any characters after a hashtag on a line are comments.
+
+## 'knitr' is the package that turns R Markdown into a document
+## The following command sets some options for this R Markdown file
+##   echo = TRUE means that the code in R chunks will appear the knitted document
+##   message = FALSE and warning = FALSE mean that messages and warnings do not appear in the final document
+##   when the tidyverse library is loaded, messages are generated that we do not want to include in the knitted document
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+## The `library()' function loads in a package; the package must already be installed.
+## `tidyverse' is the name of a collection of more than a dozen packages designed to work with each other.
+## The library(tidyverse) command loads eight core packages, including ggplot2
+## Others we often use, such as lubridate, need to be loaded separately
+## The 'lubridate' package has useful functions for dates.
+library(tidyverse)
+library(lubridate)
+```
+
+Professor Jessi Cisewski Kehe contributed to these lecture notes.
+
+## Overview
+
+- These notes introduce the **ggplot2** package for making plots
+- We use data from the Lake Mendota freeze/thaw data set to introduce several types of plots
+- Read the [chapter on Lake Mendota](https://bookdown.org/bret_larget/stat-240-case-studies/madison-lakes.html) from the Course Notes and Case Studies for background.
+
+- The R Markdown file for this case study contains all of the code needed to replicate the analysis from lecture.
+- However,
+lecture will skip quickly over the blocks of code that are not directly doing visualization.
+
+### Preliminaries
+
+- For you to be able to run the code in this file,
+you need to put files in proper locations and set the working directory.
+- Let `COURSE` represent your course directory.
+
+1. If it does not yet exist, create the folder `COURSE/lecture`.
+2. Create the sub-folder `COURSE/lecture/unit2`
+3. Download the file `03-lake-mendota.Rmd` into the `unit2` sub-folder.
+4. Download the file `lake-mendota-winters-2021.csv` into the `COURSE/data` folder.
+
+## Read the data
+
+- The following R chunk has one line of code that will read in the data set.
+- Along with the code I added many comments to explain what is happening.
+
+- Each code chunk begins with three consecutive back ticks at the start of a line.
+
+- The left brace `{` followed by the letter `r` means that the code should be interpreted as r code.
+
+- The name `read-data` is the name of the chunk.
+- Naming chunks is helpful when trying to find errors.
+
+- Other knitr options could be set before the right brace `}`, but are not in this example.
+- **Note that each R chunk in a file requires a unique name.**
+
+- We will examine `read_csv()` and other functions to read in data later in the semester.
+
+```{r read-data}
+## `mendota` is a new object. 
+## The `=` assigns the loaded data set to the object name `mendota`.
+## You will often see `<-' instead as the assignment operator.
+##   I use `=` almost all the time, but `<-` is more common.
+## read_csv() is a function in the tidyverse for reading in .csv files.
+## There is a base R function named read.csv(). Use read_csv() instead.
+## If you use read.csv(), character variables get changed to factors
+##   and variable names might get changed.
+## The argument to read_csv() is a path to the file with the data
+## The '..' means go up a directory
+## Use a '/' after a directory
+##   Windows uses backslashes, but slashes work in R for any computer system.
+##   We want to write code that is reproducible on any computer, so stick with '/'.
+## The result of the code below is to create a data frame named mendota
+##   by reading in the data in the file.
+### COURSE/data contains the data file
+### COURSE/lecture/unit2 is your working directory
+mendota = read_csv("../../data/lake-mendota-winters-2021.csv")
+```
+
+### str( ) and spec( )
+
+- The R command `str()` is useful to check the structure of a data set (or other R objects).
+- This code displays the structure of the data set.
+
+- The command `spec()` is part of the tidyverse and displays how each variable is specified after reading in.
+- **Note: once you have modified a data set, `spec()` may no longer work.**
+
+```{r}
+spec(mendota)
+str(mendota)
+```
+
+## ggplot2
+
+- The **tidyverse** package **ggplot2** is based on a *grammar of graphics* (what the **gg** in **ggplot2** stands for).
+- Graphs are based on the following general principles:
+    - there is a *mapping* between variables in a data set and various *aesthetics* of the plot
+    - *geometries* determine how various aesthetics are represented in the plot
+    - a complicated plot may be built by adding several *layers* to the plot
+    - additional commands affect other aspects of the plot, such as scales, axes and their annotation, and so on
+- The code in the **ggplot2** is a language which implements the grammar of graphics.
+- The advantages of having a language for graphs include:
+    - *Flexibility*: --- the user has a rich language to create a variety of plots which may be customized in countless ways
+    - *Reproducibility*: --- Code to create graphs may be reused.
+    - *Scalability*: --- Code for a single graph may be used with iteration to create many graphs
+
+## Plots
+
+- We will first examine a number of plots for visualizing a single quantitative variable.
+- Then, we will look at scatter plots to examine relationships between two quantitative variables.
+- Additional variables may be shown on a scatter plot via color, shape, size, and other aesthetics, or by breaking a plot into multiple sub-plots by the groups in a categorical variable.
+
+### One-variable Plots
+
+- The variable *duration* is the number of days that Lake Mendota was frozen each winter.
+- (We will use the term *frozen* here to mean that the lake surface is at least 50% covered by ice, or *closed*, as described in *CNCS*.)
+
+- This variable can be displayed with many different types of graphs.
+- Every plot we make using the **ggplot2** package starts with the function `ggplot()` which takes the name of a data frame as its first argument.
+- Then, new layers can be added to the plot.
+- This almost always includes at least one geometric element, a function that begins with `geom_` followed by a descriptive name.
+- Most plots will include multiple layers to add labels, modify previous layers, add more features to the plot, and so on.
+- Note that the `+` sign must be at the end of each line, not the beginning of the line.
+- (If not, R thinks you were done adding layers the first time there is not an `+` at the end.)
+
+#### Histogram
+
+- We can use **ggplot2** to make a basic histogram as follows.
+- Note that the aesthetics mapping set with `aes()` is an argument in the `geom_*()` function.
+- Another possibility is to call it in `ggplot()`.
+    - Any aesthetics set in `ggplot2()` carry over to all subsequent layers.
+    - Aesthetics set elsewhere only apply to that specific layer.
+
+```{r histogram}
+ggplot(mendota, aes(x=duration)) +
+  geom_histogram()
+```
+
+- This histogram changes:
+
+  * the labels with `ggtitle()`, `xlab()`, and `ylab()`
+  
+  * the widths of the bars with the `binwidth` argument
+  
+  * the boundaries where the bars are set with the `boundary` argument 
+  
+  * the color of the bar interiors with the `fill` argument
+  
+  * the color of the bar outlines with the `color` argument
+
+```{r histogram-fancy}
+ggplot(mendota) +
+  geom_histogram(aes(x=duration),
+                 fill="hotpink",
+                 color="black",
+                 binwidth=10,
+                 boundary=0) +
+  xlab("Total days frozen") +
+  ylab("Counts") +
+  ggtitle("Lake Mendota Freeze Durations, 1855-2021")
+```
+
+#### Density Plot
+
+A density plot can be thought of as a smoothed histogram.  
+We can display a density plot using `geom_density().`
+
+```{r density}
+ggplot(mendota) +
+  geom_density(aes(x=duration),
+               fill="hotpink",
+               color="black", alpha = 0.1) +
+  xlab("Total days frozen") +
+  ylab("Density") +
+  ggtitle("Lake Mendota Freeze Durations, 1855-2021")
+```
+
+#### Boxplot
+
+- A boxplot requires a categorical variable for the x argument
+and a quantitative variable for the y argument.
+
+- Each box outlines the middle 50% of the observations in the corresponding category:
+
+    * the bottom of the box (i.e., the lower hinge) gives the 25th percentile (the first quartile, Q1)
+
+    * the middle bar give the median (the 50th percentile)
+
+    * the top of the box (i.e., the upper hinge) gives the 75th percentile (the third quartile, Q3)
+
+- The lower vertical line (i.e., the lower whisker) reaches down to the minimum value of the observations, but
+will not drop below Q1 - 1.5 x IQR, where IQR = Q3 - Q1 is the inter-quartile range.
+
+- Similarly, the higher vertical line (i.e., the upper whisker) reaches up to the maximum value of the observations, but
+will not go above Q3 + 1.5 x IQR.
+
+- Any points plotted below or above the vertical lines indicate observations that are below or above the noted ranges.  These points may be considered outliers.
+
+```{r boxplot}
+ggplot(mendota) +
+  geom_boxplot(aes(x=as.character(decade), y=duration),
+               fill="red",
+               color="blue") +
+  ylab("Total days frozen") +
+  xlab("Decade") +
+  ggtitle("Lake Mendota Freeze Durations, 1855-2021")
+```
+
+### Two-variable Plots
+
+#### Scatter Plot with a Trend Line Added
+
+- To create a scatter plot you can designate the `x` and `y` variables in `aes()`.
+- Then add points using `geom_point()`.
+- If you want the points connected, you can also include `geom_line()`.
+- Using `geom_smooth()` will add a smooth line to the plot, which adapts to the data.
+- Here, we add the argument `se = FALSE` to suppress a ribbon around the line that would be drawn otherwise.
+
+```{r plot}
+## note setting the aesthetics here in ggplot()
+## otherwise, we would need to set in geom_point(), geom_line(), and geom_smooth()
+ggplot(mendota, aes(x=year1, y=duration)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(se=FALSE) +
+  xlab("Year") +
+  ylab("Total Days Frozen") +
+  ggtitle("Lake Mendota Freeze Durations, 1855-2021")
+```

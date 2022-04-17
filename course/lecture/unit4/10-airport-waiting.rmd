@@ -1,0 +1,302 @@
+---
+title: "Airport Waiting Times"
+author: "Bret Larget"
+output: html_document
+---
+This R Markdown document includes contributions from Professor Jessi Kehe.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(lubridate)
+library(XML) #For reading in HTML files
+## Note: this code assumes viridis.R is two steps up the file directory tree in a `scripts` folder
+source("../../scripts/viridis.R")
+```
+
+## Function to read in waiting time data
+
+```{r stuff-for-all-airports}
+## Input:  x = HTML file
+## Output: nicely formatted tibble
+read_airport =  function(x)
+{
+  airport_column_names = c("airport",
+                           "terminal",
+                           "date",
+                           "hour",
+                           "us_avg_wait",
+                           "us_max_wait",
+                           "non_us_avg_wait",
+                           "non_us_max_wait",
+                           "all_avg_wait",
+                           "all_max_wait",
+                           "all_n_0_15",
+                           "all_n_16_30",
+                           "all_n_31_45",
+                           "all_n_46_60",
+                           "all_n_61_90",
+                           "all_n_91_120",
+                           "all_n_120_plus",
+                           "all_excluded",
+                           "all_total",
+                           "all_flights",
+                           "all_booths")
+
+  airport = readHTMLTable(x)$`NULL` %>%
+    slice(-(1:3))
+
+  names(airport) = airport_column_names
+
+  airport = airport %>%
+    as_tibble() %>%
+    mutate(across(ends_with("wait") | starts_with("all"), as.numeric)) %>% 
+    mutate(across(where(is.factor),as.character)) %>% 
+    mutate(date = mdy(date))
+  
+  return( airport )
+}
+```
+
+## Read the Data
+
+```{r read-data}
+## read the individual data sets
+den = read_airport("../../data/DEN-2018.html")
+jfk = read_airport("../../data/JFK-2018.html")
+lax = read_airport("../../data/LAX-2018.html")
+msp = read_airport("../../data/MSP-2018.html")
+ord = read_airport("../../data/ORD-2018.html")
+sfo = read_airport("../../data/SFO-2018.html")
+
+## combine into one data set
+awt = bind_rows(den, jfk, lax, msp, ord, sfo)
+
+## remove the individual ones
+rm(den, jfk, lax, msp, ord, sfo)
+```
+
+## Exploratory Data Analysis
+
+### Any missing data?
+
+- In the next chunk, we create a function that counts the number of missing values in a vector
+- We then use `across()` inside of `summarize()` to count the missing data in each variable.
+
+```{r missing-data}
+count_na = function(x)
+{
+  return ( sum(is.na(x) ) )
+}
+
+awt %>%
+  summarize(across(everything(), count_na)) %>% 
+  print(width = Inf)
+
+# There are no missing values for any variables.
+```
+
+### Lambda functions
+
+- `across()` also allows one to define a function within the call rather than creating and naming it beforehand
+- one way to do so is using a concept from other computer programming languages called a *lambda function*
+    - a lambda function is a small "anonymous" function, meaning it is not named
+    - it also can only have a single input
+    - the lambda function is defined, used once, and discarded
+- In `across()` the syntax for specifying a lambda function is to start with the tilde (`~`) and then follow with the function definition
+    - `.x` is the single input argument, and stands for here as the values in a single column
+- See the example below.
+
+```{r}
+awt %>% 
+  summarize(across(everything(), ~ sum(is.na(.x)))) %>% 
+  print(width = Inf)
+```
+
+### Summarize Key Variables
+
+> How many passengers and flights are there at each airport/terminal combination?
+
+```{r key-variables-airport-passengers-flights}
+## airports and terminals
+awt %>%
+  group_by(airport,terminal) %>%
+  summarize(passengers = sum(all_total),
+            flights = sum(all_flights))
+
+### JFK and LAX have five different international terminals
+### The other airports have one or two each.
+```
+
+> How many days of data are there for each airport?
+
+```{r key-variables-airport-dates}
+## examine date by airport
+awt %>%
+  select(airport,date) %>%
+  distinct() %>%
+  count(airport)
+## One date is missing for all the airports
+```
+
+- One day is missing for each airport!  Can we figure out which one it is?
+- One approach could be to narrow down by:
+    - adding a month variable
+    - counting the number of distinct days within each month
+    - seeing which total is less than the actual number of days
+    - find the distinct days within that month
+- But a more straightforward way as we did with the Madison weather data is to:
+    - create a mini data frame with all possible dates
+    - join with a data summary of the dates and terminals in the data set
+    - see what is missing
+    
+```{r}
+## Create a mini temporary data set with all dates in 2018
+temp = tibble(
+  date = seq(ymd("2018-01-01"), ymd("2018-12-31"), 1)
+)
+
+## Find distinct dates by airport, then do a full merge and filter those with missing terminals
+awt %>% 
+  select(airport, date) %>% 
+  distinct() %>% 
+  full_join(temp) %>% 
+  filter(is.na(airport))
+```
+
+- This means May 8, 2018 is not present for at least one airport
+- Earlier, we saw each airport was missing one date
+    - So they are all missing May 8, 2018
+- Verify by filtering for this date.  
+
+```{r}
+## check on May 8
+awt %>%
+  filter(date == "2018-05-08") %>%
+  count()
+
+### No airports have any data on May 8, 2018.
+```
+
+> Does the `all_total` variable match the sum of the other columns of passenger counts?
+
+```{r key-variables-all_total}
+## check that all_total column matches
+awt = awt %>%
+  mutate(check_total = all_n_0_15 +
+            all_n_16_30 +
+            all_n_31_45 +
+            all_n_46_60 +
+            all_n_61_90 +
+            all_n_91_120 +
+            all_n_120_plus +
+            all_excluded)
+
+awt %>%
+  summarize(diff = sum(all_total != check_total))
+
+table_mismatch = awt %>%
+  filter(all_total != check_total)
+table_mismatch
+```
+
+- There are 44 rows where the totals do not match
+
+>  What time of day are these mismatches happening?
+
+```{r key-variables-all_total-times}
+table_mismatch %>%
+  count(airport, hour)
+### All mismatches are between midnight and 1am.
+### Most are at LAX and JFK
+```
+
+>  Let's look at the distribution of the mismatches.
+
+```{r key-variables-all_total-mismatch-graphic}
+ggplot(table_mismatch, aes(x=all_total - check_total)) +
+  geom_histogram(boundary=0, binwidth=5, fill = "red", color = "black")
+```
+
+- In each of the 44 cases where there is a mismatch, the `all_total` variable exceeds the `check_total`
+- Most of the differences are fewer than five passengers
+- The most is somewhere between 30 and 35
+
+#### Let's consider another way to check the totals (`all_total`) using `purrr::pmap_dbl()`.
+
+- Our method to sum across columns required naming each column
+- This was not too bad with the eight we did, but could get tedious with more
+- The **tidyverse** package **purrr** has a number of useful functions for iteration
+    - Here, we want to iterate across columns to get a (partial) row sum
+- The function `pmap_dbl()` will apply some function row-wise and return a numeric valued column of data
+- The first argument to `pmap_dbl()` is a data frame
+- As we are not piping into `pmap_dbl()` but instead call it within `mutate()`, we use the symbol `.` to refer to the data frame that was piped into `mutate()`.
+
+```{r add-variables}
+## check total in a new way using purrr::pmap_dbl()
+## pmap_dbl here takes a data frame as its first argument
+##   and then applies the function row-wise to its elements, we will use the `sum()` function
+## select() supplies the data frame 
+## because we do not pipe into select here directly (we're inside of a pipe into mutate),
+##   we need to specify the input to select (we need to note which variables we want to sum over)
+##   The '.' represents the object that was piped into mutate()
+##   To this we select the columns that contain "_n_" and 'all_excluded'
+## the row sums of this selected sub-data frame are saved as a new
+##   variable named check_total2
+awt = awt %>% 
+  mutate(check_total2 =
+           pmap_dbl(select(., contains("_n_"), all_excluded), sum))
+
+## Verify that the check sums match each other
+awt %>%
+  select(check_total, check_total2) %>% # two variables totaling the passenger counts
+  mutate(diff = check_total - check_total2) %>% # take the difference
+  summarize(min = min(diff),
+            max = max(diff),
+            ndiff = sum(diff != 0))
+## Note that there are no differences
+```
+
+- Discrepancies should not have much influence over primary questions of interest.
+
+#### Summary of findings
+
+- The data do not contain any observations on May 8, 2018.
+
+- The `all_total` variable has a few discrepancies where counts differ occasionally when a flight arrival was near midnight.
+- We can use `check_total` as the actual value, but this assumes the individual column counts are correct.
+- Some correction or ignoring the issue is not likely to make much difference in major questions.
+
+### Associations
+
+- Next we'll create some graphics to see if we notice any interesting patterns that may lead to some questions we can try to address with the data.
+
+```{r associations}
+## Compare maximum wait time with average wait time
+## For US Citizens
+## There are many points, so use a small alpha value to lessen overplotting
+ggplot(awt, aes(x=us_avg_wait, y=us_max_wait, color=airport)) +
+  geom_point(alpha = 0.05) +
+  geom_abline(intercept=0, slope=1) +
+  facet_wrap(~airport)
+
+## And for non US Citizens
+ggplot(awt, aes(x=non_us_avg_wait, y=non_us_max_wait, color=airport)) +
+  geom_point(alpha=0.05) +
+  geom_abline(intercept=0, slope=1) +
+  facet_wrap(~airport)
+
+## Compare average wait between US and non US citizens
+ggplot(awt, aes(x=us_avg_wait, y=non_us_avg_wait, color=airport)) +
+  geom_point(alpha = 0.05) +
+  geom_abline(intercept=0, slope=1) +
+  facet_wrap(~airport)
+
+## It looks like there are some times where there were few or no non-US international travelers
+awt %>%
+  filter(non_us_avg_wait == 0)
+```
+
+

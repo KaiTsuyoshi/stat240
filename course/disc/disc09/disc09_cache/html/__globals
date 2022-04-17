@@ -1,0 +1,5 @@
+unnamed-chunk-1	%>%	==	filter	partner	prosocial	read_csv	selfish	sum	summarize
+unnamed-chunk-2	c	qnorm	return	round	sqrt
+unnamed-chunk-3	c	dbinom	gbinom	geom_vline	sum	theme_bw
+unnamed-chunk-4	dbinom	gbinom	geom_binom_density	geom_hline	theme_bw
+unnamed-chunk-5	dbinom	gbinom	geom_binom_density	geom_hline	theme_bw

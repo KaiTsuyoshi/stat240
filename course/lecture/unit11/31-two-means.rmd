@@ -1,0 +1,534 @@
+---
+title: "Comparing Two Means"
+author: "Bret Larget"
+output: html_document
+---
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the following data sets
+    - `COURSE/data/butterfat.txt`
+    - `COURSE/data/lizards.txt`
+
+- You will need the packages:
+    - **tidyverse**
+    - **scales**
+    - **tidymodels**
+    - **dotwhisker**
+
+- The code uses **readr** function `read_table()` which assumes a version number at least 2.0.0.
+    - If your **readr** version number is older, please update.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(tidymodels)
+library(dotwhisker)
+library(egg)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Butterfat
+
+- The butterfat content in milk is an important factor in determining its economic value
+and in how it is processed to form dairy products such as cheese, ice cream, and butter.
+- In an experiment,
+a company is interested in comparing the performances of two different labs
+which measure the butterfat content of milk.
+- Two separate samples were collected from 107 loads of milk,
+and one sample from each load was sent to one of two labs.
+- Butterfat content changes based on the identity of the cows,
+the time of milking, the time since the last milking, and other factors,
+so the percentage butterfat can be expected to vary from load to load,
+but should be consistent for samples taken from the same load
+as each load is properly agitated before sampling to promote mixing throughout the load.
+
+> How should this data be examined to compare the performances of the labs?
+
+### Explore the Data
+
+- Read the data, do numerical and graphical summaries
+- This is an example of a *paired sample*, as there is a single sample of $n=107$ loads, each of which is measured twice.
+
+```{r}
+butterfat_orig = read_table("../../data/butterfat.txt")
+readr::spec(butterfat_orig)
+
+butterfat = butterfat_orig
+```
+
+#### Graphical Summaries
+
+- Let's make a scatter plot with the Lab 1 measurement on the x axis and Lab on the y axis
+- We need to reshape the data to do this.
+
+```{r}
+butterfat_wide = butterfat %>% 
+  pivot_wider(names_from = lab, values_from = bfat)
+
+ggplot(butterfat_wide, aes(x = Lab1, y = Lab2)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0) +
+  ggtitle("%Butterfat Measurements from Two Labs",
+          subtitle = "n = 107")
+```
+
+- There are four individual measurements that are **outliers**.
+- There are several possible explanations:
+    1. data may be recorded incorrectly;
+    2. the load may not have been agitated properly before sampling;
+    3. one or both labs occasionally makes a poor measurement;
+- With additional background information,
+we understand that the second explanation is most plausible,
+as some of the individuals that do the work of taking samples fail to properly agitate the milk,
+and as cream rises to the top,
+there is the possibility that two separate samples from the same load
+might differ considerably in percentage of butterfat.
+- As these observations are likely not telling us about the performance of the laboratories,
+but about how a small part of the data is collected,
+and our desired inference is about the laboratories,
+it is reasonable to discard the outliers.
+- Without this background information, it would be more difficult to justify the same decision.
+
+- We eliminate the four outliers by identifying the ids of the points where the absolute difference between the two measurements is the highest
+
+```{r}
+outliers = butterfat_wide %>% 
+  mutate(adiff = abs(Lab1 - Lab2)) %>% 
+  slice_max(adiff, n = 4)
+
+outlier_ids = outliers %>% 
+  pull(id)
+
+## modify the two data sets
+butterfat = butterfat %>% 
+  filter(!(id %in% outlier_ids))
+
+butterfat_wide = butterfat_wide %>% 
+  filter(!(id %in% outlier_ids))
+```
+
+#### Re-examine the Graph
+
+```{r}
+ggplot(butterfat_wide, aes(x = Lab1, y = Lab2)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0) +
+  ggtitle("%Butterfat Measurements from Two Labs",
+          subtitle = "n = 103")
+```
+
+### Numerical Summaries
+
+- We summarize the two samples
+- But as this is paired data, we also summarize the differences
+
+```{r}
+butterfat_sum = butterfat %>% 
+  group_by(lab) %>% 
+  summarize(n = n(),
+            mean = mean(bfat),
+            sd = sd(bfat))
+
+butterfat_sum
+
+butterfat_wide = butterfat_wide %>% 
+  mutate(diff = Lab1 - Lab2)
+
+butterfat_wide_sum = butterfat_wide %>% 
+  summarize(n = n(),
+            mean = mean(diff),
+            sd = sd(diff),
+            r = cor(Lab1, Lab2))
+
+butterfat_wide_sum
+```
+
+- $r$ is the correlation coefficient which varies between $-1$ and $1$ and is a measure of the strength of a linear relationship between the two measurements
+- A value near 1 means the points are tightly clustered around a line with a positive slope.
+- More on this statistical summary next week.
+
+### Confidence Interval
+
+- We seek a confidence interval for the mean difference in butterfat measurements between the two labs.
+- We have a **single paired sample**
+
+#### Model
+
+- The population is all possible butterfat measurement differences made by the two labs on the same load of milk.
+- The sample is the 103 paired samples we have
+
+- Let $\Delta$ be the mean difference, Lab1 - Lab2, in the population.
+- We have data pairs $(x_i, y_i)$ for $i = 1,\ldots,103$.
+- Model the differences, $d_i = x_i - y_i$.
+
+$$
+D_i \sim F(\Delta, \sigma), \quad \text{for $i = 1, \ldots, n$}
+$$
+
+- $F$ is a generic distribution for the population of differences
+- $\Delta$ is the mean of this distribution
+- $\sigma$ is the standard deviation
+
+> We treat a paired sample the same as a single sample of a quantitative variable.
+
+#### Manual Calculations
+
+- The sample size is $n = 103$
+- The sample mean is
+$\bar{d} = `r round(butterfat_wide_sum %>% pull(mean), 3)`$
+- The sample standard deviation is
+$s = `r round(butterfat_wide_sum %>% pull(sd), 3)`$
+
+```{r}
+ci_calc = butterfat_wide_sum %>% 
+  mutate(se = sd/sqrt(n), tmult = qt(0.975, n-1), me = tmult*se,
+         low = mean - me, high = mean + me)
+ci_calc %>% 
+  print(width = Inf)
+
+ci = ci_calc %>% 
+  select(low, high)
+
+ci
+```
+
+### Interpretations
+
+- A typical difference in the butterfat measurements from the same load between the two labs is about 0.022 percent.
+- From above, the standard deviation within each lab among different loads is about 0.13 percent, which is much higher
+- We are confident that the mean difference in measurements between the two labs is quite small.
+
+> We are 95% confident that the mean difference in butterfat percentage measurements between the two labs is between Lab 1 being lower than Lab 1 by 0.008 percent or Lab2 being lower than Lab 2 by 0.0006 percent.
+
+- We are very confident that there any systemic differences in the accuracy between the two labs is very small and of no practical importance.
+
+### t.test() confirmation
+
+```{r}
+t.test(x = butterfat_wide$Lab1,
+       y = butterfat_wide$Lab2,
+       paired = TRUE)
+```
+
+### Hypothesis Test
+
+- Same populations and samples and model as above
+
+- Hypotheses
+
+$H_0: \Delta = 0$    
+$H_a: \Delta \neq 0$
+
+- Test Statistic
+
+$$
+T = \frac{ \bar{d} - 0 }{s/\sqrt{n}}
+$$
+
+```{r}
+tstat = butterfat_wide_sum %>% 
+  mutate(tstat = mean / (sd/sqrt(n))) %>% 
+  pull(tstat)
+
+tstat
+```
+
+- Sampling distribution is t with 102 degrees of freedom
+
+- Calculate and visualize the p-value
+
+```{r}
+pvalue = 2*pt(-abs(tstat), 102)
+pvalue
+```
+
+```{r, fig.height = 3}
+gt(102, a = -5, b = 5) +
+  geom_t_fill(102, a = -5, b = tstat) +
+  geom_t_fill(102, a = abs(tstat), b = 5) +
+  xlab("t statistic") +
+  ggtitle("P-value visualization",
+          subtitle = "102 df, t = -1.68") +
+  theme_minimal()
+
+```
+
+- Interpretation in context
+
+> The evidence is consistent with there being no difference in the mean butterfat measurements from the same loads of milk between the two labs ($p = 0.10$, two-sided t-test, $\text{df} = 102$).
+
+### A tidymodels analysis
+
+```{r}
+bf_tidy = linear_reg() %>% 
+  set_engine("lm") %>% 
+  fit(diff ~ 1, data = butterfat_wide) %>% 
+  tidy()
+
+bf_tidy
+```
+
+- CI visualization
+
+```{r}
+bf_tidy %>% 
+  dwplot(show_intercept = TRUE) +
+  xlab("Difference in %Butterfat, Lab 1 - Lab 2") +
+  ggtitle("%Butterfat difference between two labs",
+          subtitle = "95% CI visualization")
+```
+
+
+
+
+
+
+
+
+
+## Horned Lizards
+
+- The horned lizard *Phrynosoma mcalli* has horns it uses for protection.
+- Researchers tested a hypothesis that longer horns are more protective then shorter horns.
+- A predator of these lizards is the loggerhead shrike,
+a bird that impales the lizards on thorns or barbed wire.
+- Researchers compared the horn lengths of 30 skewered lizards
+with 154 horned lizards that were living.
+- The average length of the skewered lizards was  21.99 mm
+and the average length of the living lizards was 24.28 mm.
+- This data set and background are from the textbook *The Analysis of Biological Data* by Michael Whitlock and Dolph Schluter
+
+> Is this evidence that longer horns are more protective?
+
+Here is a [You Tube video](https://www.youtube.com/watch?v=W_zfyAx_z_8) with background information.
+
+### Read the data
+
+```{r}
+lizards = read_table("../../data/lizards.txt")
+
+readr::spec(lizards)
+```
+
+### Explore
+
+- Here, we have two independent samples
+- Will make side-by-side box plots and overlay the actual points
+   - We set `coef=Inf` so that single points are not labeled as outliers
+   - As we plot all points individually, it is distracting and misleading to plot the outliers twice
+   
+```{r}
+ggplot(lizards, aes(x = survival, y = hornLength, fill = survival)) +
+  geom_boxplot(coef = Inf, alpha = 0.5) +
+  geom_point(position = position_jitter(width=0.3, height=0)) +
+  xlab("Survival") +
+  ylab("Horn length (mm)") +
+  ggtitle("Comparison of lizard horn lengths") +
+  theme_minimal() 
+```
+   
+- The visual evidence is that there is a mean difference between the horn lengths of these two groups of lizards.
+
+### Populations and Samples
+
+- The populations are the individual horn lizards who live in the area where the study was conducted and at that time
+    - Those killed by shrikes are one population
+    - Those alive are another population
+- The samples are the lizards in the data set
+
+### Model
+
+- We have two independent samples
+- Treat the data as randomly sampled from larger populations.
+
+$X_i \sim F_1(\mu_1, \sigma_1), \quad i = 1, \ldots, n_1$    
+$Y_i \sim F_2(\mu_2, \sigma_2), \quad i = 1, \ldots, n_2$    
+
+### Estimates from Summary Data
+
+*Do this calculation live*
+
+```{r}
+
+```
+
+
+
+
+#### Solution 
+
+```{r}
+lizards_sum = lizards %>% 
+  group_by(survival) %>% 
+  summarize(n = n(),
+            mean = mean(hornLength),
+            sd = sd(hornLength))
+
+lizards_sum
+```
+
+> Find a 95% Confidence Interval for $\mu_1 - \mu_2$
+
+*Do these calculations live*
+
+```{r}
+## use t.test()
+## note that there is an unusual degrees of freedom value
+
+```
+
+```{r}
+## manually, using df from above
+
+```
+
+
+Interpretation
+
+
+
+
+#### Solution
+
+```{r}
+## use t.test()
+x = lizards %>% 
+  filter(survival == "Living") %>% 
+  pull(hornLength)
+
+y = lizards %>% 
+  filter(survival == "Killed") %>% 
+  pull(hornLength)
+
+t.test(x, y)
+```
+
+- The default method in `t.test()` does not assume that $\sigma_1 = \sigma_2$.
+- The theory is then based on the test statistic
+
+$$
+t = \frac{\bar{X} - \bar{Y}}{\sqrt{\frac{s_x^2}{n_x} + \frac{s_y^2}{n_y}}}
+$$
+
+- Under ideal sampling assumptions (independence and normal populations), this distribution **does not** have an exact t distribution.
+- However, a result from mathematical statistics says that it has an approximate t distribution where the degrees of freedom may be estimated from the data.
+- The formula is a bit complex, but it will always fall between the minimum of the two single-sample degrees of freedom, $n_x-1$ and $n_y-1$
+and their sum $n_x + n_y - 2$
+    - If:
+        - the sample sizes are not too different
+        - and the sample standard deviations are not too different
+    - then, the estimated degrees of freedom is near the sum $n_x + n_y - 2$.
+    
+- If one is willing to assume that $\sigma_1 = \sigma_2$, then the data from both samples may be pooled together to estimate a common value of $\sigma$.
+- Under this stronger assumption, the degrees of freedom is exactly $n_x + n_y - 2$.
+- Here is the pooled standard deviation calculation.
+    - This is the square root of the weighted average of the sample variances, weighted by their degrees of freedom.
+
+$$
+s_p = \sqrt{ \frac{n_x - 1}{n_x + n_y - 2}s_x^2 + 
+             \frac{n_y - 1}{n_x + n_y - 2}s_y^2 }
+$$
+
+Using the equation for the sample standard deviation, this evaluates to
+
+$$
+s_p = \sqrt{ \frac{\sum_{i=1}^{n_x} (x_i - \bar{x})^2 +
+                   \sum_{i=1}^{n_y} (y_i - \bar{y})^2}
+                   {n_x + n_y - 2} }
+$$
+
+which is the total sum of all residuals over the combined degrees of freedom.
+
+- We can do this calculation with `t.test()` too.
+
+```{r}
+t.test(x, y, var.equal = TRUE)
+```
+
+## Hypothesis Test
+
+**Do live in class, if time permits**
+
+- State Hypotheses
+
+```{r}
+
+```
+
+- Calculate the test statistic
+
+
+```{r}
+
+```
+
+- Calculate the p-value
+ 
+```{r}
+
+```
+ 
+- Interpret in context
+
+
+
+
+
+
+#### Solution
+
+$H_0: \mu_1 = \mu_2$    
+$H_a: \mu_1 \neq \mu_2$
+
+$t = \frac{\bar{x} - \bar{y}}{\text{SE}(\bar{x} - \bar{y})}$
+
+```{r}
+t.test(x,y)
+```
+
+
+
+```{r}
+## manual
+n_x = length(x)
+n_y = length(y)
+
+se = sqrt(var(x)/n_x + var(y)/n_y)
+
+tstat = (mean(x) - mean(y)) / se
+
+pvalue = 2*pt(-abs(tstat), 40.372)
+
+n_x
+n_y
+se
+tstat
+pvalue
+
+## Welch formula for df
+welch_df = function(x, y)
+{
+  n1 = length(x)
+  n2 = length(y)
+  v1 = var(x)/n1
+  v2 = var(y)/n2
+
+  return ( (v1 + v2)^2 / (v1^2/(n1-1) + v2^2/(n2-1) ) )
+}
+
+welch_df(x,y)
+```
+
+

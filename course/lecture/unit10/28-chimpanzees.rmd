@@ -1,0 +1,466 @@
+---
+title: "Chimpanzees Analysis and Differences Between Proportions"
+author: "Bret Larget"
+output: html_document
+---
+This R Markdown document includes contributions from Jessi Kehe.
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the chimpanzee data
+    - `COURSE/data/chimpanzee.csv`
+
+- You will need the package `tidyverse` for these lectures.
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,
+                      message=FALSE,
+                      warning=FALSE,
+                      cache=TRUE,
+                      autodep=TRUE,
+                      cache.comments=FALSE)
+library(tidyverse)
+library(lubridate)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+
+## CI for a Difference of Proportions
+
+### Data
+
+```{r read-data}
+chimps = read_csv("../../data/chimpanzee.csv") %>%
+  mutate(with_partner = case_when(
+    partner == "none" ~ "no partner",
+    TRUE ~ "partner")) %>%
+  relocate(with_partner, .after = partner)
+
+chimps
+```
+
+
+### Inference question
+
+> Does chimpanzee C make the pro-social choice more often when there is a partner in the neighboring room than when there is no partner present?
+
+```{r}
+chimp_c = chimps %>%
+  filter(actor == "C") %>%
+  group_by(with_partner) %>%
+  summarize(prosocial = sum(prosocial),
+            selfish = sum(selfish), 
+            n = prosocial + selfish, 
+            p_hat = prosocial/n)
+chimp_c
+```
+
+- The point estimates are 63.3% with a partner and 56.7% without a partner.
+- Is this difference significant?
+- We will consider multiple approaches.
+
+
+#### Statistical Model
+
+The statistical model is:
+
+- $p_1$ is the probability that Chimpanzee C makes the pro-social choice when there is a partner
+- $p_2$ is the probability that Chimpanzee C makes the pro-social choice when there is no partner
+
+$$
+X_1 \mid p_1 \sim \text{Binomial}(90,p_1) \\
+X_2 \mid p_2 \sim \text{Binomial}(30,p_2)
+$$
+
+#### Confidence Interval from Simulation
+
+- Estimate $p_1$ and $p_2$ from the original two samples
+- Simulate many independent samples of the same size, plugging in the estimated values for the unknown $p_1$ and $p_2$.
+- For each pair of samples, calculate the difference in sample proportions
+- Calculate the standard deviation of these differences:
+    - This is a simulation-based estimate of the *standard error* of the difference between two population proportions
+- Verify that the shape of the sampling distribution of $\hat{p}_1 - \hat{p}_2$ is approximately normal
+- If so, create a confidence interval centered at the point estimate, plus or minus 1.96 times the SE.
+
+```{r}
+B = 1000000
+## x_partner = 57
+## n_partner = 90
+## p_partner = x_partner / n_partner
+n1 = chimp_c %>% filter(with_partner == "partner") %>% pull(n)
+phat1 = chimp_c %>% filter(with_partner == "partner") %>% pull(p_hat)
+## x_no_partner = 17
+## n_no_partner = 30
+## p_no_partner = x_no_partner / n_no_partner
+n2 = chimp_c %>% filter(with_partner == "no partner") %>% pull(n)
+phat2 = chimp_c %>% filter(with_partner == "no partner") %>% pull(p_hat)
+
+## Show these values
+n1
+phat1
+n2
+phat2
+
+## Do the simulation
+chimp_c_sim = tibble(
+  x1 = rbinom(B, n1, phat1),
+  x2 = rbinom(B, n2, phat2),
+  phat1 = x1/n1,
+  phat2 = x2/n2,
+  diff = phat1 - phat2)
+```
+
+- Show the first few rows
+
+```{r}
+chimp_c_sim %>% 
+  print(n = 20, width = Inf)
+```
+
+- Calculate the estimated standard error
+    - Here the *standard error*, $\text{SE}(\hat{p}_1 - \hat{p}_2)$, is the standard deviation of the sampling distribution of $\hat{p}_1 - \hat{p}_2$.
+
+```{r}
+se_sim = chimp_c_sim %>% 
+  summarize(se = sd(diff)) %>% 
+  pull(se)
+
+se_sim
+```
+
+- Just by chance, we expect the difference in sample proportions to differ by about 0.10 from the true unknown difference.
+
+- Examine the shape of the sampling distribution.
+
+```{r, fig.height = 3}
+ggplot(chimp_c_sim, aes(x = diff)) +
+  geom_density(fill = "papayawhip") +
+  geom_hline(yintercept = 0) +
+  xlab("Difference in sample proportions") +
+  theme_minimal()
+```
+
+- The shape of the density looks approximately normal
+
+### Finish the Confidence Interval
+
+$$(\text{point estimate}) \pm 1.96 \times (\text{standard error})$$
+
+```{r}
+## calculation
+chimp_c_ci = tibble(
+  estimate = phat1 - phat2,
+  se = se_sim,
+  z = qnorm(0.975),
+  low = estimate - z*se,
+  high = estimate + z*se)
+
+chimp_c_ci
+```
+
+> We are 95% confident that difference in long-run probabilites that chimpanzee C make the pro-social choice with and wothout a partner is between 0.27 higher with a partner and 0.14 higher without a partner.
+
+
+## Using Formulas
+
+#### Confidence Interval for a Difference Formula
+
+- Mathematical statistics provides a formula for $\text{SE}(\hat{p}_1 - \hat{p}_2)$.
+
+$$
+\text{SE}(\hat{p}_1 - \hat{p}_2) =
+  \sqrt{ \frac{p_1(1-p_1)}{n_1} + \frac{p_2(1-p_2)}{n_2} }
+$$
+
+- Note that
+
+$$
+\text{SE}(\hat{p}_1 - \hat{p}_2) = 
+\sqrt{ \text{SE}(\hat{p}_1)^2 + \text{SE}(\hat{p}_2)^2 }
+$$
+
+- This follows from a probability fact that the variance of sum (or difference) of independent random variables is the sum of the individual variances.
+    - Here, $\hat{p}_1$ and $\hat{p}_2$ are modeled as independent as each is calculated using data from different trials (and in fact, from different sessions on different days).
+
+- Just like with a single sample, we can improve the accuracy (true capture probability is closer to 95%) by adding some extra values.
+    - Agresti and Coffe showed in 2000 that adding one fake observation of each type to each interval improves the coverage probabilities
+    - (Just like the Agresti-Coull method for a single $p$ with four additional artificial observations, but spread them out, two to each sample.)
+
+```{r}
+## tidyverse calculation
+chimp_c_ci_2 = chimp_c %>%
+  mutate(n_tilde = n+2,
+         p_tilde = (prosocial + 1)/n_tilde, 
+         se = sqrt(p_tilde*(1 - p_tilde)/n_tilde)) %>% 
+  summarize(estimate = diff(p_tilde),
+            se = sqrt( sum( se^2 ) ),
+            z = qnorm(0.975),
+            low = estimate - z*se,
+            high = estimate + z*se)
+chimp_c_ci_2
+```
+
+- Base R calculations
+
+```{r}
+## base R calculations
+x1 = 57
+n1 = 90
+x2 = 17
+n2 = 30
+ntilde1 = n1 + 2
+ntilde2 = n2 + 2
+ptilde1 = (x1+1)/ntilde1
+ptilde2 = (x2+1)/ntilde2
+estimate = ptilde1 - ptilde2
+se1 = sqrt( ptilde1*(1-ptilde1)/ntilde1 )
+se2 = sqrt( ptilde2*(1-ptilde2)/ntilde2 )
+se = sqrt(se1^2 + se2^2 )
+z = qnorm(0.975)
+low = estimate - z*se
+high = estimate + z*se
+ci = c(low, high)
+ci
+
+```
+
+- The 95% confidence interval for the difference extends from the pro-social probability with a partner being anywhere from 16% lower to 23.3% higher than the pro-social choice without a partner.
+- This is consistent with there being no difference in the probabilities.
+
+## Hypothesis Tests for Testing Differences
+
+### Inference question
+
+> If we ignore differences among actors, do chimpanzees make prosocial choices more often with a partner than without?
+
+- Data summary: find the number of choices of each type for each condition.
+
+```{r}
+chimp_sum = chimps %>%
+  group_by(with_partner) %>%
+  summarize(prosocial = sum(prosocial),
+            selfish = sum(selfish), 
+            n = prosocial + selfish, 
+            p_hat = prosocial/n)
+chimp_sum
+```
+
+- Over the entire experiment, chimpanzees made the pro-social choice 58.9% of the time with a partner present compared to 46.1% of the time with no partner.
+- We wish to distinguish between two possibilities:
+    - In the long run, chimpanzees will make the pro-social choice more often when there is a partner present
+    - There is no difference in behavior when a partner is present or not: the observed difference may plausibly be explained by random chance
+
+## Testing from Simulation
+
+- In an estimation inference situation, we are estimating the difference between $p_1$ and $p_2$ and so estimate these separately before doing the simulation.
+- In contrast, when we do a hypothesis test, we begin **by making the assumption that the null hypotheses that $p_1 = p_2$ is true** and so we need to conduct the simulation with this assumption in mind.
+
+## Statistical Model
+
+1. State a statistical model
+
+- The statistical model is:
+
+- $p_1$ is the probability that chimpanzees makes the pro-social choice when there is a partner
+- $p_2$ is the probability that chimpanzees makes the pro-social choice when there is no partner
+
+$$
+X_1 \mid p_1 \sim \text{Binomial}(610,p_1) \\
+X_2 \mid p_2 \sim \text{Binomial}(180,p_2)
+$$
+
+- This model may be criticized as it ignores potential effects from:
+    - behavior differences among different actors
+    - identity of specific partners
+    - day-to-day differences
+    - reactions by the partner from the previous action
+- Nevertheless, we may do the test and be aware of potential issues when making interpretations
+- With the real data, it is possible to examine potential effects where the model may be inaccurate and potentially misleading
+
+2. State hypotheses:
+
+$$
+H_0: p_1 = p_2 \\
+H_a: p_1 \neq p_2
+$$
+
+- The null hypothesis is there is no difference in behavior whether or not  a partner is present.
+- The alternative hypothesis is that there is a difference
+
+3. Calculate a test statistic:
+
+- The most direct test statistic we may select is the difference in sample proportions, $\hat{p}_1 - \hat{p}_2$.
+- If the null hypothesis is true, we expect this statistic to be close to zero with differences caused by random sampling variation
+- If the null hypothesis is false, then we expect this statistic to be different from zero
+
+```{r}
+test_stat = chimp_sum %>% 
+  select(p_hat) %>% 
+  summarize(stat = diff(p_hat)) %>% 
+  pull(stat)
+              
+  
+test_stat
+```
+
+- In the experiment, we observe chimpanzees making the pro-social choice 12.7% more often with a partner present than without.
+
+4. Determine the null sampling distribution of the test statistic
+
+- If the null hypothesis is true, then $p_1 = p_2$ the distribution of the test statistic is whatever it is when $X_1$ and $X_2$ are drawn from binomial distributions with the same success probability $p$.
+- To estimate $p$ from the data, we combine both samples:
+$$
+\bar{p} = \frac{X_1 + X_2}{n_1 + n_2} = \frac{359 + 83}{610 + 180} \doteq 0.559
+$$
+
+5. Calculate the p-value.
+
+- Here, we use simulation.
+    - Pick a large number of replications, say $B = 1,000,000$.
+    - Generate independent binomial random variables $X_1$ and $X_2$ of the appropriate size
+    - Find the difference between the sample proportions.
+    - See how often a value as extreme as that from the original data occurs.
+    
+```{r}
+## calculate the combined sample estimate of p
+p0 = chimp_sum %>% 
+  summarize(prosocial = sum(prosocial),
+            n = sum(n),
+            p = prosocial / n) %>% 
+  pull(p)
+
+p0
+
+## create a tibble with the simulation results
+B = 1000000
+n1 = chimp_sum %>% filter(with_partner == "partner") %>% pull(n)
+n2 = chimp_sum %>% filter(with_partner == "no partner") %>% pull(n)
+x1 = chimp_sum %>% filter(with_partner == "partner") %>% pull(prosocial)
+x2 = chimp_sum %>% filter(with_partner == "no partner") %>% pull(prosocial)
+test_stat = (x1/n1) - (x2/n2)
+test_stat
+
+## set the random seed so we can repeat exactly if desired
+set.seed(20010731)
+
+sim = tibble(
+  x1 = rbinom(B, n1, p0),
+  n1 = n1,
+  x2 = rbinom(B, n2, p0),
+  n2 = n2,
+  phat1 = x1/n1,
+  phat2 = x2/n2,
+  diff = phat1 - phat2)
+
+sim %>% print(n=15, width = Inf)
+```
+
+- The p-value is what fraction of the time that the simulated test statistic is at least as extreme in the direction of the alternative hypothesis as the statistic calculated from the actual data
+    - These are the outcomes at least as *favorable to the alternative hypothesis as the observed data*
+- Here, we expect the statistic to be zero, on average, when the null hypothesis is true.
+- We have a two-sided alternative hypothesis, $H_a: p_1 \neq p_2$
+- At least as extreme, here, means further away from zero than the test statistic from the actual data.
+- We can be careful comparing equality of floating point numbers using `near()`
+
+```{r}
+pvalue_sim = sim %>% 
+  summarize(
+    pvalue = mean( abs(diff) > test_stat | near(abs(diff), test_stat)) ) %>% 
+  pull(pvalue)
+
+pvalue_sim
+```
+
+- The p-value `r signif(pvalue_sim,2)` indicates strong evidence against the null hypothesis of equal probabilities.
+
+
+6. Logic explanation.
+
+- This is a small p-value that is significant at the conventional 0.05 and 0.01 levels as $p < 0.05$ and $p < 0.01$.
+- One may call this *highly statistically significant*.
+- If $p_1 = p_2$, meaning chimpanzees make the pro-social choice equally as often in the long run with or without a partner present in this experimental setting, then a difference as large as we actually observed is rather improbable (expected to happen less than three times out of 1000 experiments).
+- Hence, we have evidence to support the conclusion that there is a difference in the two long-run probabilities.
+- Even with a two-sided alternative, we can interpret the direction of the difference based on the observed data.
+- Our p-value was **conservative** as we allowed the possibility of rejecting the null hypothesis to occur if the difference had been in either direction.
+
+7. Interpretation in context.
+
+> There is very strong evidence to support the conclusion that chimpanzees exhibit pro-social behavior in the experimental setting more often when a partner is present than when one is not ($p = 0.0025$, binomial simulation test for differences in proportions).
+
+## Simulation check
+
+- We can verify the simulation results by computing some summary statistics and graphing the sampling distribution.
+
+```{r}
+sim %>% 
+  summarize(mean = mean(diff),
+            sd = sd(diff),
+            pvalue = mean(abs(diff) >= test_stat))
+```
+
+- The mean of the sampling distribution is very close to zero, as expected.
+
+```{r, fig.height = 3}
+ggplot(sim, aes(x=diff)) +
+  geom_density(fill = "papayawhip") +
+  geom_vline(xintercept = test_stat, color = "red", linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  xlab("Difference in Sample Proportions") +
+  theme_minimal()
+```
+
+- We see that the sampling distribution is well-approximated by a normal curve
+- The test statistic is far out in the tail, so we expect a small p-value.
+
+## Normal approximation for p-value
+
+- There is also an equation-based solution.
+
+- If both sample sizes are large enough, then the sampling distribution of the difference is approximately normal.
+    - $n_1 = 630$, $n_2 = 180$
+    - the estimated $p$ is not close to either 0 or 1
+    
+- If the null hypothesis is true, our estimate of the common value for $p_1$ and $p_2$ is $\bar{p} = (359 + 83) / (630 + 180) \doteq `r round(p0,4)`$.
+- The variance of $\hat{p}_i$ is $\frac{p_i(1 - p_i)}{n_i}$ for $i=1,2$.
+- The variance of $\hat{p}_1 - \hat{p}_2$ is the sum of the variances.
+- The standard error is the square root of the variance.
+
+$$
+\text{SE}(\hat{p}_1 - \hat{p}_2) = \sqrt{
+\frac{p_1(1-p_1)}{n_1} + \frac{p_2(1-p_2)}{n_2} }
+$$
+
+- Use the common estimate $\bar{p} = `r round(p0,4)`$ for both $p_1$ and $p_2$.
+- Use the standardization formula
+$$
+z = \frac{(\hat{p}_1 - \hat{p}_2) - 0}{\text{SE}}
+$$
+- and find the p-value with an area under the curve.
+
+```{r}
+n1 = chimp_sum %>% filter(with_partner == "partner") %>% pull(n)
+n2 = chimp_sum %>% filter(with_partner == "no partner") %>% pull(n)
+x1 = chimp_sum %>% filter(with_partner == "partner") %>% pull(prosocial)
+x2 = chimp_sum %>% filter(with_partner == "no partner") %>% pull(prosocial)
+test_stat = (x1/n1) - (x2/n2)
+p0 = (x1 + x2)/(n1 + n2)
+se = sqrt( p0*(1-p0)/n1 + p0*(1-p0)/n2 )
+z = test_stat / se
+z
+## p-value is twice the area to the right of z under the standard normal curve.
+## this is also twice the area to the left of -|z| due to symmetry
+pvalue_z = 2*pnorm(-abs(z))
+pvalue_z
+```
+
+- The simulation and the theory result in essentially the same numerical value of the p-value which is interpreted in the same way.
+
+> There is very strong evidence that chimpanzees make the pro-social choice more often when a partner is present than when not present ($p = 0.0025$, z-test for difference in proportions).
+

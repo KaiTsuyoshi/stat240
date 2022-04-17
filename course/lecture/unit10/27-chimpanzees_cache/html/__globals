@@ -1,0 +1,5 @@
+graph-ho	gbinom	geom_vline	theme_bw
+unnamed-chunk-1	dbinom	gbinom	geom_binom_density	geom_hline	theme_bw
+extreme-x	%>%	<	|	c	dbinom	filter	near	pbinom	prob	pull	sum	summarize	tibble	x
+graph-esp	gbinom	geom_vline	theme_minimal
+esp-pvalue	pbinom

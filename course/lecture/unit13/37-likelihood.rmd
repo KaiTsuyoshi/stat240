@@ -1,0 +1,423 @@
+---
+title: "Chimpanzees, Likelihood, and Bayesian Inference"
+output:
+  html_document: default
+---
+
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+\renewcommand{\prob}{\mathsf{P}}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(tidymodels)
+library(kableExtra)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Aims
+
+- Before the end of the semester, we aim to present some models useful for assessing the strengths of sports teams and to make predictions.
+- Two competitions of interest are:
+    - The NCAA Division I Volleyball tournament
+        - Wisconsin is the #4 overall seed
+        - The tournament began last Friday night
+        - Wisconsin won both matches and advances to the last 16 teams
+        - Wisconsin will host the next two matches on Friday and Saturday this week
+    - On Sunday, the NCAA announced pairings for all of the football Bowl Games
+        - A committee picked the top 4 teams who will pair off in two bowl games with the winners facing off for the national championship
+        - Wisconsin plays against Arizona State in the Vegas Bowl on December 30
+        
+- To build toward understanding the models we will use for these two sports competitions, we need to introduce two new key concepts:
+    - Likelihood
+    - Bayesian inference
+- In each case, we want to make inference about the probability that one team defeats another
+- Any pairing of two distinct teams will involve a different probability.
+- To learn these ideas, we start with some much simpler examples, bringing back our Chimpanzee case study.
+
+## Chimpanzees, Recalled
+
+- The Chimpanzee pro-social choice experiment involved seven chimpanzees who were each given multiple trials to make either the *pro-social* or *selfish* choice.
+- Some trials were with a partner and some had no partner.
+- We introduce likelihood for the simple situation of the 90 trials for subject~A with a partner under the binomial model where each trial is independent with the same probability of making the pro-social choice.
+
+$$
+X ~ \sim \text{Binomial}(90, p)
+$$
+
+- The expression for the probability of the data under this model is
+
+$$
+\prob(X = x \mid p) = \binom{90}{x} p^x (1-p)^{90 - x}, \quad $x=0,\ldots,90$
+$$
+
+- For a fixed value of $p$, such as $p = 0.60$, this expression defines a *probability distribution*: the equation lists all possible values of the random variable $X$ and the probability of each, which satisfies the requirement that the sum of the probabilities is one.
+- We can graph such a probability distribution.
+
+```{r, fig.height = 2}
+gbinom(90, 0.6, a = 40, b = 80)
+```
+
+- If $p=0.70$ instead, there is a different probability distribution.
+
+```{r, fig.height = 2}
+gbinom(90, 0.7, a = 40, b = 80)
+```
+
+### Likelihood
+
+- However, if we have observed data, such as $x=60$, we may take the same expression for the binomial probability, but this time, treat the unknown as the parameter $p$, where $0 \le p \le 1$.
+- Such an expression is known as a *likelihood*, which is a function of the parameter given the data.
+
+$$
+L(p \mid x) = \binom{90}{x} p^x (1-p)^{90 - x}, \quad 0 \le p \le 1
+$$
+
+- We may graph this if $x$ is fixed at a value, such as 60.
+
+```{r, fig.height = 2}
+df = tibble(
+  p = seq(0.001, 0.999, 0.001),
+  like = dbinom(60, size = 90, prob = p))
+
+ggplot(df, aes(x = p, y = like)) +
+  geom_line() +
+  xlab("p") +
+  ylab("likelihood") +
+  ggtitle("Binomial Likelihood",
+          subtitle = "n = 90, x = 60") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+```
+
+- A school of statistical thoughts holds that likelihood is a useful concept for inference
+- The *maximum likelihood estimate* of a parameter is the value of the parameter which maximizes the likelihood, or makes the probability of the observed data as high as possible.
+- From the graph, we see that the value of $p$ which maximizes $L(p \mid x = 60)$ is between 0.625 and 0.75.
+- Common sense suggests that the maximizing value may match the observed proportion, $\hat{p} = 60/90 \doteq 0.6667$.
+    - In fact, this may be proven to be true in general.
+    - The maximum likelihood estimate of $p$ in the binomial model is $\hat{p} = x/n$.
+    
+### Log-likelihood
+
+- We can check numerically that this is the case.
+- It is often useful to plot the likelihood on the (natural) log-scale as:
+    - probabilities can become very small, even at their maximum value
+    - the probability of a number of independent events all occurring is a product of the individual probabilities; the log of a product is a sum, which is simpler to maximize
+    - the parameter value which maximizes the log-likelihood also maximizes the likelihood
+- For the binomial model, the log-likelihood expression is
+
+$$
+L(p \mid x) = \ln \binom{n}{x} + x\ln(p) + (n-x)\ln(1-p)
+$$
+
+- Note that the first term is only a function of the data, $n$, and $x$.
+- If we treated the data as the probability of a single sequence of successes and failures instead of the count of the number of successes, the entire log-likelihood curve would just change by moving down by a constant amount and the maximum value would still be at $\hat{p}$.
+    
+```{r, fig.height = 2}
+phat = 60/90
+max_like = dbinom(60, 90, phat)
+
+df = df %>% 
+  mutate(log_like = dbinom(60, 90, p, log = TRUE))
+
+ggplot(df, aes(x = p, y = log_like)) +
+  geom_line() +
+  xlab("p") +
+  ylab("log-likelihood") +
+  geom_vline(xintercept = phat, color = "red", linetype = "dashed") +
+  geom_hline(yintercept = log(max_like), color = "red", linetype = "dashed") +
+  ggtitle("Binomial Log-Likelihood",
+          subtitle = "n = 90, x = 60") +
+  theme_bw()
+```
+
+- The shape of the log-likelihood is smooth, but does not follow a simple pattern over a large range
+- However, the shape is often close to an upside-down parabola for parameter values near the maximum value
+
+```{r, fig.height = 2}
+n = 90
+se = sqrt(phat*(1-phat)/n)
+df %>% 
+  filter(between(p, phat - 3*se, phat + 3*se)) %>% 
+ggplot(aes(x = p, y = log(like))) +
+  geom_line() +
+  xlab("p") +
+  ylab("log-likelihood") +
+  geom_vline(xintercept = phat, color = "red", linetype = "dashed") +
+  geom_hline(yintercept = log(max_like), color = "red", linetype = "dashed") +
+  ggtitle("Binomial Log-Likelihood",
+          subtitle = "n = 90, x = 60") +
+  theme_bw()
+
+```
+
+### Normal Approximation
+
+- The parabola shape is not a coincidence, but is a result of the central limit theorem which concludes that the sampling distribution of a sample mean (or sum) of independent random variables has a shape that is approximately normal
+- The normal density is
+$$
+f(x \mid \mu, \sigma) = \frac{1}{\sigma\sqrt{2\pi}} \mathrm{e}^{-\frac{1}{2}\left(\frac{x-\mu}{\sigma}\right)^2}
+$$
+- The log-likelihood is
+$$
+L(\mu, \sigma \mid x) = -\ln \sigma -\frac{1}{2}\ln 2\pi -\frac{1}{2\sigma^2}(x-\mu)^2
+$$
+- For a fixed value of $\sigma$, this is a parabola as a function of $\mu$.
+
+### Confidence Intervals
+
+- For a normal distribution, the difference between the log-likelihood at the maximum and at the endpoints of this confidence interval is $z^2/2$.
+$$
+L(\hat{\mu}, \sigma \mid x) - L(\hat{\mu} + z\sigma, \sigma \mid x) = \frac{z^2}{2}
+$$
+- For $z=1.96$, we get $z^2/2 = `r round(qnorm(0.975)^2/2, 2)`$.
+- A purely likelihood-based confidence interval would pick all values of the parameter where the log-likelihood is within $z^2/2$ of the maximum.
+- Finding the end-points in the binomial setting requires some numerical methods to see where the line 1.92 below the maximum intersects the log-likelihood curve, in general.
+
+```{r}
+n = 90
+se = sqrt(phat*(1-phat)/n)
+z = qnorm(0.975)
+
+## function to find end points of the confidence interval
+f = function(p)
+{
+  return( abs(dbinom(60, 90, p, log = TRUE)
+             - (dbinom(60, 90, phat, log = TRUE) - z^2/2)) )  
+}
+
+low = optim(p = phat - z*se, f, method = "Brent",
+            lower = phat - z*se - 0.2,
+            upper = phat)$par
+
+high = optim(p = phat + z*se, f, method = "Brent",
+            lower = phat,
+            upper = phat + z*se + 0.2)$par
+
+c(low,high)
+
+## Add estimate to the plot
+df %>% 
+  filter(between(p, phat - 3*se, phat + 3*se)) %>% 
+ggplot(aes(x = p, y = log(like))) +
+  geom_line() +
+  xlab("p") +
+  ylab("log-likelihood") +
+  geom_vline(xintercept = phat, color = "red", linetype = "dashed") +
+  geom_hline(yintercept = log(max_like), color = "red", linetype = "dashed") +
+  geom_hline(yintercept = log(max_like) - z^2/2,
+             color = "blue", linetype = "dotted") +
+  geom_vline(xintercept = c(low, high),
+             color = "blue", linetype = "dotted") +
+  ggtitle("Binomial Log-Likelihood",
+          subtitle = "n = 90, x = 60") +
+  theme_bw()
+```
+
+### Bayesian Inference
+
+- *Bayesian inference* is an alternative approach to estimating an unknown parameter $p$ from the binomial model.
+- In the Bayesian approach to statistical inference,
+everything that is uncertain,
+including parameters,
+is treated as a random variable with a probability distribution.
+- This is in contrast to frequentist statistical approaches where parameters are treated as non-random (fixed) unknown constants.
+- The Bayesian approach requires a prior distribution for the unknown parameters and a likelihood model which connects the parameter with the data.
+- Once the prior distribution, the likelihood model, and the data are specified, the posterior distribution of the parameter is calculated by Bayes theorem which states that the posterior distribution is proportional to the product of the prior denisty and the likelihood.
+
+#### Example
+
+- In our running example, there is a parameter $p$ which is the pro-social probability for a chimpanzee in the experiment.
+- Assume we have a prior density $f(p)$ for this parameter.
+- The likelihood is the binomial model plugging in the data for the realized value and treating the expression as a function of $p$.
+$$
+f(x \mid p) = \binom{n}{x} p^x(1-p)^{n-x}
+$$
+- The posterior density is proportional to the product of the likelihood and the prior density.
+$$
+f(p \mid x) \propto f(p) f(x \mid p)
+$$
+- To make this a probability distribution, we need to multiply by the correct constant so that the total area under the density curve is equal to one.
+
+#### Beta Distribution
+
+- A common and convenient choice for the prior density is the Beta distribution,
+$p \sim \text{Beta}(\alpha,\beta)$,
+which has density
+$$
+f(p) = \frac{p^{\alpha-1}(1-p)^{\beta-1}}{B(\alpha,\beta)}, \quad 0 < p < 1
+$$
+where $B(\alpha,\beta)$ is a normalizing constant
+and $\alpha>0$ and $\beta>0$ are parameters.
+The mean of this distribution is $\mathsf{E}(p) = \frac{\alpha}{\alpha+\beta}$ and the standard deviation is
+$$
+\text{SD}(p) = \sqrt{ \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)}}
+$$
+
+#### Alternative Parameterization
+
+If we let $\mu = \alpha/(\alpha+\beta)$ and
+$\phi = \alpha + \beta$,
+then the standard deviation may be written as
+$$
+\text{SD}(p) = \sqrt{ \frac{\mu(1-\mu)}{(\phi+1)}}
+$$
+and we see that for a fixed mean,
+the distribution becomes more concentrated as the sum $\phi = \alpha + \beta$ increases.
+
+#### Normalizing Constant
+
+For those of you that have had some calculus,
+the normalizing constant is
+$$
+B(\alpha,\beta) = \int_0^1 t^{\alpha-1}(1-t)^{\beta-1} \,\mathrm{d}t = \frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha+\beta)}
+$$
+where the gamma function $\Gamma(x)$ is defined as
+$$
+\int_0^\infty t^{x-1} \mathrm{e}^{-t}\,\mathrm{d}t
+$$
+which is a generalization of the factorial function.
+For an non-negative integer $n$, $\Gamma(n+1) = n!$.
+
+#### R Functions
+
+- `dbeta()` is the density of the beta distribution;
+- `qbeta()` is the quantile function;
+- `pbeta()` is the cumulative distribution function (the area to the left under the density)
+- `rbeta()` generates random variables from the beta distribution.
+- `lgamma()` is the log of the gamma function.
+
+- I have also written `gbeta()` which you can use to visualize the beta density for different values of `alpha` and `beta`.
+
+#### Back to the Example
+
+If we assume a Beta prior density for $p$ with parameters $\alpha$ and $\beta$, then the prior density is
+$$
+f(p) = \frac{p^{\alpha-1}(1-p)^{\beta-1}}{B(\alpha,\beta)}
+$$
+the likelihood is
+$$
+f(x \mid p) = \binom{n}{x} p^x(1-p)^{n-x}
+$$
+so the posterior density is proportional to
+$$
+f(p \mid x) \propto f(p) f(x \mid p)
+\propto p^{x+\alpha-1} (1-p)^{n-x + \beta - 1}
+$$
+which we recognize as the $\text{Beta}(x+\alpha,n-x+\beta)$ distribution.
+
+- In other words,
+if the prior density is $\text{Beta}(\alpha,\beta)$,
+for every *success* we add one to $\alpha$
+and for every *failure* we add one to $\beta$.
+The sum $\alpha + \beta$ gets larger by one for each observation.
+
+- It is worth noting that if we were to assume a $\text{Beta}(2,2)$ prior density, then the posterior density would be $\text{Beta}(x+2,n-x+2)$ distributed which has the mean
+$\E(p \mid x) = (x+2)/(n+4)$ which matches the point estimate from the Agresti-Coull method.
+- Thus, we can see there is a mathematical connection between the Agresti-Coull method and Bayesian inference.
+- A $\text{Beta}(2,2)$ prior density is similar to acting as if the prior information were equivalent to seeing a sample of size four with two successes and two failures.
+
+## Data
+
+- After this lengthy excursion, let's return to the Chimpanzee data and consider Bayesian inference for $p$
+for the pro-social probability if Chimpanzee A.
+
+```{r read-data}
+chimps = read_csv("../../data/chimpanzee.csv")
+
+chimps %>%
+  filter(actor == "A") %>%
+  filter(partner != "none") %>%
+  summarize(prosocial = sum(prosocial),
+            selfish = sum(selfish),
+            n = prosocial + selfish)
+```
+
+## Likelihood
+
+Graph the likelihood when $X=60$ and $n=90$.
+
+```{r likelihood, fig.height=2}
+n = 90
+x = 60
+
+df = tibble(
+  p = seq(0,1,length.out = 1001),
+  like = dbinom(x,size=n,prob=p))
+
+ggplot(df, aes(x=p,y=like)) +
+  geom_line() +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 2/3, color="red", linetype="dashed") +
+  geom_hline(yintercept = dbinom(60,90,2/3), color="red", linetype="dashed")
+```
+
+## Bayesian Model
+
+- Assume a uniform prior distribution for $p$, or $p \sim \text{Beta}(1,1)$.
+- Then the posterior distribution of $p$ is $\text{Beta}(61,31)$.
+- Here is a graph of the prior and posterior densities and the likelihood on the same graph.
+    - the prior density is blue
+    - the likelihood (scaled to fit the graph) is red
+    - the posterior density is purple and dashed
+- Note that because the prior density is constant, the posterior density is proportional to the likelihood.
+- We can also calculate a 95% credible region from the 0.025 and 0.975 quantiles of the posterior density.
+    
+```{r bayes-1, fig.height=2}
+gbeta(1,1,title=FALSE) +
+  geom_beta_fill(alpha=61,beta=31,
+                 a = qbeta(0.025,61,31),
+                 b = qbeta(0.975,61,31),
+                 fill = "purple") +
+  geom_beta_density(61,31,color="red") +
+  geom_beta_density(61,31,color="purple",linetype="dashed") +
+  theme_bw()
+
+round(qbeta(0.025,61,31),4)
+round(qbeta(0.975,61,31),4)
+```
+
+- Next, assume a $\text{Beta}(2,2)$ prior density.
+
+```{r bayes-2, fig.height=2}
+alpha = 62
+beta = 32
+
+gbeta(2,2,title=FALSE) +
+  geom_beta_fill(alpha=alpha, beta=beta,
+                 a = qbeta(0.025,alpha,beta),
+                 b = qbeta(0.975,alpha,beta),
+                 fill = "purple") +
+  geom_beta_density(alpha-1, beta-1, color="red") +
+  geom_beta_density(alpha, beta, color="purple", linetype="dashed") +
+  theme_bw()
+
+round(qbeta(0.025,alpha,beta),4)
+round(qbeta(0.975,alpha,beta),4)
+```
+
+- The posterior density is different from the likelihood, but is very similar.
+- The posterior is shifted just slightly toward the prior mean of 0.5.
+
+#### Compare the two posterior densities.
+
+The two posterior densities are slightly different, so the influence of different prior densities is small.
+
+```{r bayes-compare, fig.height=2}
+gbeta(61,31,a=0.5,b=0.8,title=FALSE) +
+  geom_beta_density(62,32,color="red") +
+  theme_bw()
+```
+
+### Summary
+
+- Likelihood is a very useful principle for parameter estimation
+- Bayesian inference uses likelihood
+- In Bayesian inference, probability is used to describe all uncertainty
+    - a *posterior* distribution is proportional to the product of the *prior* and the *likelihood*
+- For Bayesian inference of proportions, it is useful to use the Beta distribution
+

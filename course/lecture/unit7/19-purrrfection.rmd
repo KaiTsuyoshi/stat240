@@ -1,0 +1,380 @@
+
+---
+title: "`purrr` fection"
+author: "Bi Cheng Wu"
+documentclass: article
+classoption: letterpaper
+output:
+  html_document:
+  highlight: tango
+---
+
+<style>
+h1{margin-top:30px}
+h2{margin-top:30px}
+h3{margin-top:30px}
+</style>
+
+## Setup details
+
+Needed packages (automatically installed by setup chunk): pacman, tidyverse, lubridate, magrittr, glue, readxl, tidyjson, XML
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+
+# check if pacman package manager installed, then use to import all necessary packages
+if(! "pacman" %in% installed.packages()) install.packages("pacman")
+pacman::p_load(tidyverse,lubridate,tidyjson,glue,XML,magrittr,readxl)
+
+## viridis colors
+source("../../scripts/viridis.R")
+```
+
+
+# Overview
+
+- This is the second lecture on `purrr`. We will cover more advanced usages of `purrr` in further examples.
+
+
+# `purrr` anonymous functions
+
+Since `purrr` is frequently used to apply functions across multiple input objects/arguments, it also provides convenient ways to define "**anonymous**" functions, which are functions defined without a name.
+
+ - `~{ }` is used to start a function definition
+ - `.x` is used inside the function definition to refer to the first argument
+ - if there is a second argument, it's referred to by `.y`
+
+Here are some examples (note the examples given below can all be more easily done using base `R` vectorized operations since they are extremely simple, so using `map` functions here is only done for teaching purposes).
+
+```{r anonymous}
+# mapping the function f(x)=x²+1 to some integers
+map_dbl(1:5, ~{.x^2+1})
+
+# mapping the function adding the prefix "letter " to some letters
+map_chr(LETTERS[1:7], ~{paste0("letter ",.x)})
+
+# mapping the function of division to pairs of numbers
+map2_dbl(10:15,1:6, ~{.x/.y})
+```
+
+
+
+# Other useful `purrr` functions
+
+A few other useful `purrr` functions, in no particular order!
+
+
+## List operations
+
+
+### `pluck()`
+
+The `pluck` function is a generalization of the `` `[` ``, `$`, and `extract` functions that let you get elements of a list. One of the main advantages of `pluck` is that it lets you easily get **nested objects** with additional arguments
+
+```{r pluck}
+got_chars = read_json("../../data/got_chars.json")$..JSON[[1]]
+
+got_chars %>% 
+  pluck(1) %>% 
+  str(list.len=8)
+
+got_chars %>% 
+  pluck(1,"titles")
+
+got_chars %>% 
+  pluck(1,"titles",3)
+```
+
+Also, **if the element doesn't exist** (for example, if you go out of bounds), `pluck` will simply **return `NULL` instead of throwing an error**, which can happen with `` `[[` ``. You can also change this to some other value with the `.default` argument.
+
+```{r pluck-null, error=TRUE}
+got_chars[[50]]
+
+got_chars %>% 
+  pluck(50)
+
+got_chars %>% 
+  pluck(50,.default="no such character")
+```
+
+We can combine this with `map` to access attributes across many elements of a list.
+
+> Which houses do the POV characters come from? Which house has the most POV characters? Which house has the least?
+
+```{r pluck-houses}
+got_chars %>% 
+  map_chr(pluck,"culture") %>% 
+  # str_subset keeps only elements that match a pattern
+  # in this case, we are using it to remove empty strings, i.e. ""
+  # these are due to some characters not being affiliated with a house
+  str_subset(".+") %>% 
+  table() %>% 
+  sort(decreasing=T)
+```
+
+> Are there any characters who have been played by multiple actors? (sometimes actors may be changed in between seasons due to scheduling issues, contract issues, logistical issues, etc.)
+
+```{r pluck-playedby}
+got_chars %>% 
+  map(pluck,"playedBy") %>% 
+  map_dbl(length)
+```
+
+It looks like except for one POV character, every character has been played by only one actor/actress. To find which character and who played them, we can investigate even further.
+
+```{r pluck-playedby-2}
+got_chars %>% 
+  map(extract,c("name","playedBy")) %>% 
+  map_dfr(~{
+    c(name   = .x[[1]],
+      n      = length(.x[[2]]),
+      actors = paste(.x[[2]],collapse=", "
+    )
+  )}) %>% 
+  arrange(desc(n))
+```
+
+> You know the show begins in 297AC. Extract the birthdays of characters who have a birthday and plot a histogram showing the ages of the POV characters. For characters who have a range of years as their birthday, use the mean.
+
+```{r pluck-age}
+tibble(
+  age = got_chars %>% 
+    map_chr(pluck, "born") %>% 
+    ## anonymous function to extract all numbers from a string,
+    ## switch to numbers
+    ## and take the mean
+    map_dbl(~{
+      str_extract_all(.x, "[:digit:]+") %>% 
+        pluck(1) %>% 
+        as.numeric() %>% 
+        mean() %>% 
+        map_dbl(~{297 - .x})})
+  ) %>% 
+## pipe the data frame into ggplot()  
+ggplot(aes(x = age)) +
+  geom_histogram(color = "black", fill = "blue",
+                 center = 40, binwidth = 5) +
+  xlab("Age (years)") +
+  ylab("Count") +
+  ggtitle("Game of Thrones POV Character Ages")
+```
+
+We can also use `map_dbl` to get the names and birthdays and see, for example, who the oldest POV character is.
+
+```{r pluck-age-2}
+got_chars %>% 
+  map_dfr(extract, c("name","born")) %>% 
+  mutate(born = str_extract_all(born, "[:digit:]+") %>%
+           map_dbl(~{mean(as.numeric(.x))}),
+         age  = 297-born) %>% 
+  arrange(desc(age))
+```
+
+### `keep()`, `discard()`
+
+These check if **elements in a list satisfy some condition** and then either **keeps only those, or discards those**. In this sense, `keep` and `discard` are opposites. A example is shown below.
+
+Explanation:
+
+- first, `rep` repeats the number 20 ten times
+- next, `map` applies the sample function to these
+  - `sample(n)` will sample from the set 1,2,...,n
+  - the additional argument `size=5` tells `sample` to only choose a sample size of 5
+- we now have a **10 repetitions of sampling 5 numbers from 1,2,...,20**
+- `sort` sorts each sample (mostly for readability)
+- `keep` keeps only samples where the condition ($\text{mean}>11$) is satisfied
+
+```{r keep-discard}
+rep(20, 10) %>%
+  map(sample, size=5) %>% 
+  map(sort) %>% 
+  keep(~{mean(.x)>11})
+```
+
+By the way, another convenient way of generating multiple samples is with the `rerun` function, which **takes as arguments a number of times and an expression to repeat**
+
+```{r rerun}
+3 %>% rerun(sample(20, size=5))
+```
+
+We can combine this with `pluck` to filter our POV characters by their attributes
+
+> What percent of POV characters are female?
+
+```{r keep-female}
+got_chars %>% 
+  keep(~{pluck(.x,"gender") == "Female"}) %>% 
+  length() %>% 
+  {./length(got_chars) * 100}
+```
+
+
+
+### `every()`, `some()`, `none()`
+
+These check if **every, some, or none** of the elements of a list **satisfy some condition**.
+
+```{r every}
+list(1,2,3) %>% 
+  every(is.numeric)
+
+list(1,2,"x") %>% 
+  every(is.numeric)
+
+list(1,2,"x") %>% 
+  some(is.numeric)
+
+list(1,2,"x") %>% 
+  none(is.na)
+```
+
+> Does every character have an alias?
+
+```{r every-alias}
+got_chars %>% 
+  map(pluck,"aliases") %>% 
+  every(~{length(.x)>0})
+```
+
+> Do any characters have information listed for their father? How about for their mother?
+
+```{r every-father}
+got_chars %>% 
+  map(pluck,"father") %>% 
+  some(~{str_length(.x)>0})
+```
+
+
+
+### Bonus: `reduce()` and `accumulate()`
+
+These functions do almost the same thing. When applied to a vector/list, `reduce` will **operate on the first 2 elements**, then take that **result together with the 3rd element and operate** on that, and so on down the list until you are **left with a single result**. Diagram from the `purrr` manual:
+
+<center>
+<img src="https://i.imgur.com/f9mCDHp.png" style="width:40%"/>
+</center>
+
+`accumulate` does the same thing, except it will return each intermediate result:
+
+<center>
+<img src="https://i.imgur.com/U0YGHPi.png" style="width:40%"/>
+</center>
+
+```{r reduce}
+letters[1:5]
+
+letters[1:5] %>% 
+  reduce(paste,sep=".")
+
+letters[1:5] %>% 
+  accumulate(paste,sep=".")
+```
+
+One way that `reduce` may be commonly used is with something like to combine things into a data frame (assuming for some reason you couldn't easily use `map_dfr`).
+
+```{r reduce-bind-rows}
+got_chars %>% 
+  map(extract, c("name","gender","culture","born")) %>% 
+  reduce(bind_rows)
+```
+
+
+
+
+# Revisiting airport data
+
+Let's take some of the tools we learned so far and revisit the airport and obesity data sets and show how we can read in those data more easily without needed to write many lines of code and without needing nested for loops.
+
+We will also be using a few new functions (or using some functions in a different way) for convenience. Each line of code is explained below:
+
+ - `glue()` from `glue` package (part of tidyverse)
+   - provides easy way to **substitute variables** into a string
+   - in the file path, `{airports}` will be replaced with elements from the `airports` vector
+   - like other operations, this is **vectorized** so the result will be 1 file path for each airport
+   ```{r}
+   files = c("1","2","3")
+   glue("file-{files}.csv")
+     ```
+ - `map_dfr()` from `purrr` package
+   - produces output as **data frames**
+   - result from multiple data frames will be **automatically joined by rows**
+ - `readHTMLTable()` reads in files and gives a list of data frames found
+ - `pluck()` retrieves the actual data frame (which is the first element) from the list
+ - `slice()` removes the first 3 non-data rows
+ - `set_names()` from `purrr` package sets column names
+   ```{r}
+   set_names(1:3, c("a","b","c"))
+   ```
+ - `mutate()` fixes column types
+
+Remember at the end, `map_dfr()` will automatically combine all the data frames produced (1 for each file) by binding the rows together (note it will do this by matching columns with the same name).
+
+```{r airports}
+airports = c("DEN","JFK","LAX","MSP","ORD","SFO")
+
+awt = glue("../../data/{airports}-2018.html") %>% 
+  map_dfr(~{
+    readHTMLTable(.x) %>% 
+      pluck(1) %>% 
+      slice(-(1:3)) %>% 
+      set_names(c("airport","terminal","date","hour","us_avg_wait","us_max_wait",
+                  "non_us_avg_wait","non_us_max_wait","all_avg_wait","all_max_wait",
+                  "all_n_0_15","all_n_16_30","all_n_31_45","all_n_46_60",
+                  "all_n_61_90","all_n_91_120","all_n_120_plus","all_excluded",
+                  "all_total","all_flights","all_booths"))
+  }) %>% 
+  mutate(across(ends_with("wait") | starts_with("all"), as.numeric),
+         across(where(is.factor),as.character),
+         date = mdy(date)) %>% 
+  as_tibble()
+
+awt
+```
+
+
+
+# Revisiting obesity data
+
+We can do a similar thing with the obesity data set. Explanation for each line:
+
+ - we first create age values to be used later for setting ages for each sheet
+ - `expand.grid()` from `base` package (default package loaded in `R` at start up)
+   - creates every possible combination of input vectors
+   - this is used to easily loop over all sheets in both files
+   ```{r}
+   expand.grid(c("a","b"), 1:2)
+   ```
+ - `pmap_dfr()` from `purrr` package
+   - `pmap` prefix means it maps over multiple input objects
+   - `sheet` is the first argument, and that is set internally as `.x`
+   - `sex` is the second argument, and that gets set internally as `.y`
+   - inside the function, we then can use `.x` and `.y` to represent the sheet and sex values
+   - `_dfr` means return the object as a data frame
+   - just like `map_dfr()`, `pmap_dfr()` will also automatically combine all data frames in the result by rows
+ - `glue()` will again substitute in sex to get the correct file path
+ - `read_excel()` reads the specified file and sheet number
+ - `rename()` renames the columns to nice names
+ - `mutate()` adds columns showing the sex and age values for the rows in each file/sheet combination
+   - this allows us to tell which rows came from which sex file and which age sheet
+
+```{r obesity}
+age_values = c("05-17","18-34","35-54","55-74","75+")
+
+obesity = expand.grid(sheet=1:5, sex=c("Females","Males")) %>% 
+  pmap_dfr(~{
+    glue("../../data/Obesity+Prevalence+by+ZIP+Code+and+Age+Group,+{.y}.xlsx") %>% 
+      read_excel(sheet = .x + 2, skip = 5, na = ".") %>% 
+      select(starts_with(c("ZIP","Number","Population"))) %>% 
+      rename(zip = starts_with("ZIP"),
+             obese = ends_with("Obesity"),
+             n = ends_with("BMI"),
+             pop = starts_with("Population")) %>% 
+      mutate(sex = .y, age = age_values[.x])
+  }) %>% 
+  as_tibble()
+
+obesity
+```
+

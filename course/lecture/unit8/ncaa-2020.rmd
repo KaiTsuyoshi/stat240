@@ -1,0 +1,82 @@
+---
+title: "NCAA Men's Division 1 Basketball Results"
+author: "Bret Larget"
+date: "4/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message=FALSE, cache=FALSE)
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(rvest)
+```
+
+## Load and Parse the Data
+
+I figured out how to get only the division 1 games (no opponents from other divisions).
+The web says there are 350 division 1 teams in 32 conferences plus 3 teams in transition that are playing in division 1 now.
+The data I have has 353 teams, so I think it is right.
+
+I am using package `rvest` with functions to read the html which has the data formatted in a single large fixed-format file, then use `read_table()` to read this in, followed by a lot of `dplyr` and `tidyr` stuff to transform the data.
+
+There are 353 teams and a total of 5328 games among the teams.
+
+```{r}
+## URL for data
+## Data is formatted in fixed width format as a giant character
+## sub=11590 is only NCAA division 1 games
+url_head = "https://www.masseyratings.com/"
+url_body = "scores.php?s=309912&sub=11590&all=1&mode=2&sch=on&format=0"
+url = str_c(url_head, url_body)
+
+## Read the html
+ncaa_html = read_html(url)
+## Parse
+games = ncaa_html %>% 
+  html_nodes("pre") %>% 
+  html_text() %>% 
+## transform  
+  read_table(col_names = FALSE) %>% 
+  dplyr::rename(date = X1,
+         winner = X2,
+         w_score = X3,
+         loser = X4,
+         l_score = X5,
+         overtime = X6,
+         neutral_site = X7) %>% 
+## get rid of last row which is all NAs  
+  filter(!is.na(w_score)) %>% 
+## get rid of @s, but keep track of home team in case wanted later  
+  mutate(h_winner = str_detect(winner,"@"),
+         h_loser = str_detect(loser,"@")) %>% 
+  mutate(winner = str_remove(winner,"@"),
+         loser = str_remove(loser,"@")) %>% 
+## change blank values in overtime into NAs  
+  mutate(overtime = case_when(
+    overtime == "" ~ NA_character_,
+    TRUE ~ overtime))
+
+nrow(games)
+
+rm(url, url_body, url_head, ncaa_html)
+```
+
+## Summarize the Data
+
+```{r}
+## Get the record of each team
+teams = games %>% 
+  select(winner, loser) %>% 
+  dplyr::rename(W = winner,
+         L = loser) %>% 
+  pivot_longer(cols = everything(), names_to = "result", values_to = "team") %>% 
+  group_by(team,result) %>% 
+  summarize(n = n()) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = result, values_from = n) %>% 
+  select(team, W, L)
+
+nrow(teams)
+```

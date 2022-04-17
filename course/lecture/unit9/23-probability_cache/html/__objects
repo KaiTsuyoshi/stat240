@@ -1,0 +1,20 @@
+continuous-examples	a	b
+discrete-examples	
+unnamed-chunk-1	prob1	.23-probability_cache/html/unnamed-chunk-1_7912d50d6e2063a98520c14b2a8d3550_meta
+unnamed-chunk-2	p4	partial_sum	prob1	.23-probability_cache/html/unnamed-chunk-2_a04b622dee3b8fa985ad998d10dfc66b_meta
+unnamed-chunk-3	mu	p	x
+unnamed-chunk-4	prob2
+unnamed-chunk-5	sigma	sigma2
+unnamed-chunk-6	prob3
+unnamed-chunk-7	plot1
+unnamed-chunk-8	
+unnamed-chunk-9	p6
+unnamed-chunk-10	prob6
+unnamed-chunk-11	c	p7	prob7	x7
+unnamed-chunk-12	prob7_2
+unnamed-chunk-13	
+unnamed-chunk-14	mu	sigma
+unnamed-chunk-15	
+unnamed-chunk-16	
+unnamed-chunk-17	prob12
+unnamed-chunk-18	n	sim13	.Random.seed

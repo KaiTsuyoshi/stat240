@@ -1,0 +1,330 @@
+---
+author: "Kai Tsuyoshi"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+library(tidyverse)
+library(lubridate)
+## Note: this code assumes viridis.R is in a directory named scripts
+##       which is two steps up the file directory tree
+## Edit as needed
+source("../../scripts/viridis.R")
+```
+
+## Homework 6
+
+#### Due Saturday, October 23, 11:59 PM CT
+
+Problems 1--4 use the exoplanet data set to practice using string and regular expression commands.
+Recall that the data were pulled from the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/index.html) on June 15, 2021.
+
+Problems 5--8 use data from the 2021 Major League Baseball season
+
+#### Exoplanet Problems
+
+The following block of code will read in the exoplanet data from the file *exoplanets_default_2021-06-15.csv*, select and rename a subset of variables, and add an index with the row number.
+
+```{r}
+planets = read_csv("../../data/exoplanets_default_2021-06-15.csv",
+                   skip = 100) %>% 
+  select(pl_name, hostname, discoverymethod, disc_year, disc_facility,
+         sy_pnum, pl_rade, pl_bmasse, rowupdate) %>%
+  rename(planet=pl_name, star=hostname, method=discoverymethod,
+         facility=disc_facility, year=disc_year, number=sy_pnum,
+         radius=pl_rade, mass=pl_bmasse, update=rowupdate) %>% 
+  mutate(index = row_number()) %>% 
+  select(index, everything())
+```
+
+### Problems
+
+### 1
+
+Create a table which shows the number of exoplanets discovered that have the word "Kepler" as part of the planet name, grouped by `year` and `facility`.
+Display the entire summary table.
+
+```{r}
+kepler = planets %>% 
+  filter(str_detect(planet, "Kepler")) %>% 
+  group_by(year, facility) %>% 
+  summarize(n = n())
+
+print(kepler, n = Inf)
+```
+
+
+
+What year was the first of these exoplanets discovered by a facility *other than* the Kepler facility?
+
+2013; W. M. Keck Observatory 
+
+
+### 2
+
+How many *distinct* star names begin with a number?
+
+```{r}
+distinct = planets %>% 
+  distinct(star) %>% 
+  filter(str_detect(star, "^[0-9]"))
+distinct
+```
+
+32
+
+
+### 3
+
+Of the distinct star names that begin with a number,  create a bar plot of these leading numbers.  The height of the bars should indicate the number of stars for each leading number.    
+
+- Display the bars in numerical order (lowest number to the left of the plot window), and include a tick mark and label (indicating the leading number) for each bar.   
+- Be sure to include descriptive axis labels and a title. 
+
+*Hint:  First create a variable with the leading number from the star names, then create the bar plot.  Be careful because some numbers have more than one digit.*   
+
+```{r}
+lead_num = distinct %>% 
+  arrange(star) %>% 
+  mutate(num = case_when(
+    str_detect(star, "^1") ~ "1",
+    str_detect(star, "^2") ~ "2",
+    str_detect(star, "^3") ~ "3",
+    str_detect(star, "^4") ~ "4",
+    str_detect(star, "^5") ~ "5",
+    str_detect(star, "^6") ~ "6",
+    str_detect(star, "^7") ~ "7",
+    str_detect(star, "^8") ~ "8",
+    str_detect(star, "^9") ~ "9"
+  )) %>% 
+  count(num)
+
+ggplot(lead_num, aes(x = num, y = n, fill = num)) +
+  geom_col() +
+  xlab("Leading Number") +
+  ylab("Count") +
+  ggtitle("Frequency of Leading Digits of Stars")
+```
+
+- What are the name of the stars that have the most common leading number?  Print out a table with these star names.
+
+```{r}
+most_num = distinct %>% 
+  filter(str_detect(star, "^2"))
+print(most_num)
+```
+
+
+
+### 4
+
+The convention for naming planets is typically to take the name of the star and then add a lower-case letter (e.g., b, c) following the star name.  However, not all planet names follow this convention. 
+
+How many planet names do not follow this convention? 
+
+Note: special care is required if the name of the star contains a symbol with special meaning in a regular expression, such as `+`.
+
+*Hint: You may find it helpful to create a column with the regular expression you wish to compare to the planet name.*
+
+```{r}
+non_conv = planets %>% 
+  mutate(match = str_c("^", star," ", "[:lower:]$")) %>% 
+  mutate(match = str_replace(match, "\\+", "\\\\+")) %>% 
+  filter(!str_detect(planet, match))
+  
+non_conv
+```
+
+
+#### MLB Problems
+
+#### File Descriptions
+
+- The basic *player* data sets have one row for each player if the player played for a single team the entire season.
+- If the player played for multiple teams, then there is one row for that player for each team that the player played for and an additional row with the combined statistics over the year.
+    - The combined row has the variable `Tm` for team set to `TOT` for total
+- Most players in major league baseball are primarily either pitchers or position players, but some players will do both
+    - In the National League, pitchers are in the lineup and so tend to bat much more often than in the American League where the pitcher is replaced by a *designated hitter* in the lineup.
+    - Occasionally, a player who is primarily a position player will pitch
+    - The *player* data files variable `Tm` is a three-letter abbreviation for the team (or `TOT` for total).
+- The 2021 regular season ended on Sunday, October 3. Playoffs are currently under way.
+
+### Raw Data
+
+- Read in the raw MLB 2021 basic hitter and pitcher data sets
+
+```{r}
+batters = read_csv("../../data/mlb-2021-player-batting-basic.csv")
+pitchers = read_csv("../../data/mlb-2021-player-pitching-basic.csv")
+```
+
+### 5
+
+The `Name` variable actually has three variables encoded.
+
+- The name of the player
+- A possible symbol:
+  - `*` if the players bats/throws with their left hand
+  - `#` if the player is a switch hitter (can bat from either side of the plate)
+  - no symbol if the player bats/throws with their right hand
+- A unique player id string which follows the backslash
+
+For each data set, separate the `Name` variable into three columns:
+
+- `Name` with the player name
+- `Bats` (for `batters`) or `Throws` (for `pitchers`) with values "left", "right", or "switch"
+- `ID` with the unique player id
+
+Print the first 20 rows of this table
+    
+```{r}
+bat_split = batters %>% 
+  transmute(name = str_extract(Name, "^[^\\*,^#,^\\\\]+"), 
+            ID = str_extract(Name, "(?<=\\\\).*$"), 
+            Bats = case_when(
+    str_detect(Name, "\\*\\\\") ~ "Left",
+    str_detect(Name, "\\#\\\\") ~ "Switch",
+    str_detect(Name, "\\\\") ~ "Right")) 
+  
+
+print(bat_split, n = 20)
+
+pitch_split = pitchers %>% 
+  transmute(name = str_extract(Name, "^[^\\*,^#,^\\\\]+"), 
+            ID = str_extract(Name, "(?<=\\\\).*$"), 
+            Throws = case_when(
+    str_detect(Name, "\\*\\\\") ~ "Left",
+    str_detect(Name, "\\#\\\\") ~ "Switch",
+    str_detect(Name, "\\\\") ~ "Right")) 
+  
+
+print(pitch_split, n = 20)
+  
+  
+```
+
+
+### 6
+
+Using the `batters` data set, identify all single characters which are digits or letters used in the `Pos Summary` variable.
+Ignore punctuation characters, such as `*` or `/`.
+Create a small table with a row for each character and columns `character` and `count` with the number of times that character appears.
+
+Print the entire table.
+
+```{r}
+chars = batters %>% 
+  select(`Pos Summary`) %>% 
+  summarize(text = str_c(`Pos Summary`, collapse = ""))
+
+char = tibble(
+  character = str_split(chars, "") %>% 
+    unlist()) %>% 
+  arrange(character) %>% 
+  filter(str_detect(character, "^[^\\/,^//*]")) %>% 
+  group_by(character) %>% 
+  summarize(count = n())
+
+
+char
+  
+```
+
+
+### 7
+
+Create a data frame which has the *primary position* for each player with the following criteria:
+
+- For players who play for more than one team (as batters or pitchers), eliminate the rows for the single teams and keep only the rows with their combined statistics, with `Tm` equal to `TOT`.
+- For players in the `batters` data set, use the first non-punctuation symbol in `Pos Summary` as their primary position.
+    - Examples:
+        - "/1H" has primary position `1` (pitcher)
+        - "*3D/5" has primary position `3` (first base)
+        - "9/8H" has primary position `9` (right field)
+        - "H/3" has primary position `H` (pinch hitter)
+- For players in the `pitchers` data set who are **not** in the batters data set, their primary position is `1` (pitcher).
+- For players in both the `batters` and `pitchers` data set, use the primary position from the `batters` data set.
+
+The final table should have one for each distinct player and columns `Name`, `ID` and `Primary_Position`.
+
+Print the first 20 rows of this table
+
+```{r}
+mult = batters %>% 
+  select(Name, Tm, Lg, `Pos Summary`) %>% 
+  group_by(Name) %>% 
+  summarize(Name, Tm, Lg, `Pos Summary`, n = n()) %>% 
+  filter(n > 1, Tm == "TOT") 
+
+  
+sing = batters %>%
+  select(Name, Tm, `Pos Summary`) %>%
+  group_by(Name) %>%
+  summarize(Name, Tm, `Pos Summary`, n = n()) %>%
+  filter(n == 1)
+
+
+pitch = pitchers %>%
+  mutate(`Pos Summary` = "1") %>%
+  select(Name, Tm, `Pos Summary`)
+
+
+joined = full_join(mult, sing) %>%
+  ungroup() %>%
+  left_join(pitch) 
+
+primary = joined %>%
+  mutate(name = str_extract(Name, "^[^\\*,^#,^\\\\]+"), ID = str_extract(Name, "(?<=\\\\).*$")) %>%
+  mutate(pos = str_replace(`Pos Summary`, "^[\\*,\\/]", "")) %>%
+  mutate(Primary_Position = str_extract(pos, "^.")) %>%
+  select(name, ID, Primary_Position)
+
+print(primary, n = 20)
+```
+
+Create a summary table with the number of players for each primary position, sorted from the most to the least
+
+```{r}
+count = primary %>% 
+  group_by(Primary_Position) %>% 
+  summarize(n = n())
+count
+```
+
+### 8
+
+For each player with a minimum of 50 plate appearances (`PA` in the batters data), create a table with the following variables:
+
+- `Name`
+- `ID`
+- `PA` (plate appearances)
+- `HR` (the number of home runs hit)
+- `HR_rate`(the number of home runs per 100 plate appearances)
+    - calculate as `100 * HR / PA`, 
+- `Primary_Position` (from the previous problem)
+
+For players who played for multiple teams, only use their total statistics for the season (`Tm == "TOT"`).
+
+Graph the `HR_rate` variable versus primary position with side-by-side boxplots.
+Arrange the primary position values from the lowest to highest mean home run rate.
+
+```{r}
+bats = batters %>% 
+  mutate(name = str_extract(Name, "^[^\\*,^#,^\\\\]+"), ID = str_extract(Name, "(?<=\\\\).*$")) %>%
+  group_by(name) %>% 
+  summarize(name, ID, PA, HR, Lg, Tm, `Pos Summary`, n = n()) %>% 
+  filter(n > 1, Tm == "TOT", Lg == "MLB") %>% 
+  mutate(HR_rate = 100 * HR / PA) %>% 
+  select(name, ID, PA, HR, HR_rate)
+
+final = left_join(primary, bats, by = "name") %>% 
+  filter(PA > 50) 
+final %>% 
+  mutate(Primary_Position = reorder(Primary_Position, HR_rate)) %>% 
+  ggplot(aes(x = Primary_Position, y = HR_rate)) +
+  geom_boxplot() 
+```
+
+
+

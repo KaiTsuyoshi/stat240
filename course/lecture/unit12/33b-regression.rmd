@@ -1,0 +1,208 @@
+---
+title: "Introduction to Linear Regression"
+author: "Bret Larget"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## Example: Age and Height
+
+- The following graph shows a plot of height in inches versus age in months of a boy from age 2 years to 8 years.
+
+```{r}
+riley = read_table("../../data/riley.txt")
+df = riley %>% 
+  filter(age >=2*12 & age <=8*12)
+```
+
+```{r}
+ggplot(df, aes(x = age, y = height)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm")
+```
+
+## Regression Model
+
+$$
+Y_i = \beta_0 + \beta_1 X_i + \varepsilon_i
+$$
+
+- $\varepsilon_i$ is the random "error" between the actual value $Y_i$ and the mean value $\beta_0 + \beta_1 X_i$.
+- A common method to estimate $\beta_0$ and $\beta_1$ from data $x$ and $y$ is the method of "least squares"
+    - This line minimizes the sum of squared vertical distances between the points and a line
+    - Find values $b_0 = \hat{\beta}_0$ and $b_1 = \hat{\beta}_1$ to minimize
+
+$$
+\sum_{i=1}^n \big(y_i - (b_0 + b_1 x_i)\big)^2
+$$
+
+- There is a multi-variate calculus solution to this problem, but we explore a different way to do it.
+
+## lm()
+
+- We can use `lm()` to fit the linear regression model
+
+```{r}
+df_lm = lm(height ~ age, data = df)
+cf = coef(df_lm)
+cf
+summary(df_lm)
+```
+
+- The coefficients are the slope, $b_1 = `r round(cf[2],3)`$, and the intercept $b_0 = `r round(cf[1],3)`$.
+    - The slope has units inches per month (y over x)
+    - The intercept has units inches (y)
+- For this data set, $x=0$ is outside the range of the data
+    - The value at $x=0$ has a meaningful interpretation, the height at birth
+    - However, this interpretation requires an *extrapolation* beyond the range of the data which assumes that the linear relationship continues
+    
+### Coefficients and Summary Statistics
+
+- The least squares coefficients have simple equations based on summary statistics of the data.
+
+$$
+b_1 = r \times \frac{s_y}{s_x}
+$$
+
+$$
+b_0 = \bar{y} - b_1 \bar{x}
+$$
+
+- Note that the regression line goes through the point $(\bar{x},\bar{y})$.
+
+```{r}
+x = df$age
+y = df$height
+
+xbar = mean(x)
+ybar = mean(y)
+sx = sd(x)
+sy = sd(y)
+r = cor(x,y)
+
+c(xbar, ybar, sx, sy, r)
+
+b1 = r *sy/sx
+b0 = ybar - b1*xbar
+
+c(b0, b1)
+cf
+
+```
+
+### Predicted values
+
+- The straightforward way to make a prediction is just to plug into the regression equation with the estimated coefficients.
+
+- Estimate the boy's height at age 50 months.
+
+```{r}
+## one way
+est = b0 + 50*b1
+est
+
+## using coef()
+sum(cf * c(1,50))
+```
+
+- The regression line crosses has the value $\hat{y} = 42.775$ at $x=50$ months.
+
+#### Understand by standard units
+
+- We can also understand this with standard units.
+
+- The value $x=50$ is $z = (50 - \bar{x})/s_x)$ standard deviations from the mean.
+
+```{r}
+x0 = 50
+z = (x0 - mean(x))/sd(x)
+z
+```
+
+- We predict that $y$ will be $rz$ standard deviations from $\bar{y}$.
+    - Here, $r$ is very close to one, so we predict that $y$ is nearly the same number of standard deviations from $\bar{y}$ as $x$ was from $\bar{x}$.
+    
+```{r}
+yhat = mean(y) + r*z*sd(y)
+yhat
+```
+
+#### Lion Data
+
+- Let's try this with the lions data
+
+```{r}
+lions = read_csv("../../data/lions.csv") %>% 
+  rename(black = proportion.black)
+
+ggplot(lions, aes(x = age, y = black)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm")
+
+lions_lm = lm(black ~ age, data = lions)
+lions_cf = coef(lions_lm)
+lions_cf
+summary(lions_lm)
+```
+
+#### Summary Statistics
+
+```{r}
+lions_sum = lions %>% 
+  summarize(across(everything(), list(mean = mean, sd = sd)),
+            n = n(),
+            r = cor(age, black)) %>% 
+  relocate(n)
+
+lions_sum = lions_sum %>% 
+  mutate(b1 = r*black_sd/age_sd,
+         b0 = black_mean - b1*age_mean)
+
+lions_sum %>% 
+  print(width = Inf)
+
+```
+
+- Predict at age 10 years
+
+```{r}
+yhat_1 = sum( c(1,10) * lions_cf )
+yhat_1
+```
+
+#### Standard Units
+
+```{r}
+x0 = 10
+z = (x0 - lions_sum$age_mean)/lions_sum$age_sd
+z
+```
+
+- 10 years is 2.126 standard deviations above the mean
+
+```{r}
+lions_sum$r*z
+```
+
+- Predict the proportion black of the nose to be $rz = 1.68$ standard deviations above the mean.
+
+```{r}
+yhat_2 = lions_sum$black_mean + lions_sum$r*z*lions_sum$black_sd
+yhat_2
+```
+
+
+
+```{r}
+
+```
+
+

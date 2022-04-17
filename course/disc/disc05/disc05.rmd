@@ -1,0 +1,106 @@
+---
+title: "STAT 240 Discussion 5"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      include = TRUE)
+library(tidyverse)
+source("../../scripts/viridis.R")
+```
+
+## Create Data Frames
+
+- Make data frames that also have an index variable which is the row number.
+
+```{r make-data}
+df_words = tibble(
+  index = seq_along(stringr::words),
+  words = stringr::words)
+
+df_colors = tibble(
+  index = seq_along(colors()),
+  colors = colors())
+```
+
+
+### 1
+
+The R command `colors()` returns an array with all of the color names that R knows about, which was how the `df_colors` data frame was created. Find all colors that contain the pattern "orange" or "yellow". *Hint: use `str_detect()`*. 
+
+- Print out a data frame that displays the number of colors (that contain the pattern "orange" or the pattern "yellow") and the first and last of these colors alphabetically.
+
+```{r}
+
+  
+
+  
+
+
+
+```
+
+### 2
+
+How many words in `df_words` begin with each letter? Do not distinguish between lower case and capital letters. 
+
+- Make a bar graph that displays these counts, but order the bars from highest to lowest counts.  That is, the first bar should be the tallest and the bar furthest to the right should be the lowest. *Hint: consider using `reorder()`.*
+- Be sure to label the axes and add a descriptive title.
+- Repeat for the last letter of each word. 
+
+*Hint: use `mutate()` and `str_sub()` to create new columns with the first and last letter of each word and then make the graphs. Use either `str_to_lower()` or `str_to_upper()` before counting.*
+
+```{r}
+
+```
+
+
+### 3
+
+Find all words in `df_words` that begin with the most frequent first letter and end with the most frequent last letter. 
+
+- Print out a data frame that displays the number of such words and the first and last color in alphabetical order. 
+
+```{r}
+
+```
+
+
+### 4
+
+Create a string named `color_string` which has all of the colors in `df_colors()` that (i) do not contain digits and (ii) do not begin with the letter "s", separated by the symbol `|` arranged alphabetically.
+(For example, suppose there are three colors that satisfy this:  red, blue, green.  The resulting string would be "blue|green|red".)
+
+How many such colors are there?
+
+Print out the first 30 characters of `color_string`.
+
+*Hint: Consider using `str_detect()` and `[:digit:]` to help `filter()` the appropriate rows, `pull()` to extract a column as a vector, and `str_c()` with argument `collapse` set appropriately.*
+
+```{r}
+color_string = df_colors %>% 
+  filter(!str_detect(colors, "[:digit:]|^s")) %>%
+  arrange(colors) %>% 
+  pull(colors) %>% 
+  str_c(color_string, collapse = " | ")
+color_string
+```
+
+
+
+
+### 5
+
+Find all words in `df_words` that **exactly** match a color in `color_string` (from the previous question). Print out the list.
+
+How many such words are there?
+
+*Hint: Use `str_match()` inside of `mutate()` to create a column named `match` which saves the pattern where `words` matches `color_string`, drop missing values, and then `filter()` to keep only those cases where there is an exact match between the word and the matching pattern.*
+
+```{r}
+
+```
+

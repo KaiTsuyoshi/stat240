@@ -1,0 +1,444 @@
+---
+title: "Wisconsin Obesity"
+author: "Bret Larget"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+library(tidyverse)
+library(scales)
+library(readxl)
+source("../../scripts/viridis.R")
+```
+
+## Obesity Overview
+
+### Data Files
+
+- The Wisconsin obesity data is stored in two Excel workbooks,
+one for females and one for males.
+- The data for each sex is split across five sheets based on age ranges.
+- Each spread sheet has a row for each zip code and seven columns of data (three of which are derived) from counts in the other three.
+- There is substantial missing data as counts are not reported if they are low by several criteria.
+
+### Long format versus wide format
+
+- There are two primary *conceptual* ways to read in and combine this data.
+- To combine the data in **long format**,
+the 10 data sets are read in and stacked on top of one another,
+adding columns for sex and age range.
+- In long format,
+a single *case* has the information for a ZIP code/sex/age range combination.
+
+- Alternatively, in **wide format**,
+we would stick together the data sets horizontally,
+maintaining a single row per ZIP code.
+- In wide format, we would need to relabel the columns
+so that each column name would also include the sex/age range from which it arose.
+- This file will demonstrate reading the data into long format
+and then show how to reformat this into wide format as needed.
+
+### Read, Reformat, and Reshape Obesity Data
+
+- To read data from one sheet into a single data frame
+we could do something like the following.
+
+```{r read-one}
+male_05_17 =  read_excel(
+  "../../data/Obesity+Prevalence+by+ZIP+Code+and+Age+Group,+Males.xlsx",
+  sheet=3, skip=5, na=".")
+
+str(male_05_17)
+```
+
+- The data for males, aged 5 to 17, is on sheet 3 of the given file.
+- The first five lines of this file contain title information,
+line six has the column names,
+and data comes below this.
+- The data is actually in columns B through H,
+but `read_excel()` is smart enough by default to ignore empty column A.
+
+- Take a peek at this data.
+
+```{r peek}
+head(male_05_17)
+```
+
+- What is clear is that the given column names are not convenient
+and there is considerable missing data.
+- Here is some code that selects the columns with raw data
+(we can always re-derive the others if desired,
+and this is safer than trusting it is accurate)
+and then renames the columns.
+- This code uses `select()` and `rename()` from `dplyr`
+along with the select helper functions `starts_with()` and `ends_with()`
+to avoid typing the long variable names provided.
+- Furthermore,
+we use `mutate()` to add columns `sex` and `age`
+which contain the corresponding values for this part of the data.
+
+```{r one-reformat}
+male_05_17 = male_05_17 %>%
+  select(starts_with("ZIP"),
+         starts_with("Number"),
+         starts_with("Population")) %>%
+  rename(zip = starts_with("ZIP"),
+         obese = ends_with("Obesity"),
+         n = ends_with("BMI"),
+         pop = starts_with("Population")) %>%
+  mutate(sex = "male") %>%
+  mutate(age = "5-17")
+
+head(male_05_17)
+
+rm(male_05_17)
+```
+
+#### Combining
+
+- To finish creating the data set in long format,
+we could copy/paste/edit the previous code
+for all 10 sheets and then use `bind_rows()` to combine into a single data frame.
+- A better way, however,
+is to **write a function** for the repeated elements of code.
+- This results in code that is:
+    - more concise,
+    - easier to read,
+    - easier to edit,
+    - and more clear.
+- The cost is a bit of new syntax
+where we introduce the **`for()` loop.**
+
+- The only parts of the previous code that vary when we read different sheets are:
+the file name, the number of the sheet, and the values for `sex` and `age`.
+- The next function `read_and_format()` takes as arguments the name of the Excel file, a string which is one of "female" or "male",
+and an integer `i` from 1 to 5 which indicates which age range we are reading.
+- For example, age range 1 is from 5--17 and is on sheet 3 for both the male and female workbooks.
+
+```{r read-obesity-data-function}
+## file is a string with filename
+## sex_string is either "female" or "male"
+## i is a number from 1 to 5
+read_and_format = function(file, sex_string, i)
+{
+  age_values = c("05-17","18-34","35-54","55-74","75+")
+  
+  temp = read_excel(file, sheet=i+2, skip=5, na=".") %>%
+    select(starts_with("ZIP"),
+         starts_with("Number"),
+         starts_with("Population")) %>%
+    rename(zip = starts_with("ZIP"),
+           obese = ends_with("Obesity"),
+           n = ends_with("BMI"),
+           pop = starts_with("Population")) %>%
+    mutate(sex = sex_string) %>%
+    mutate(age = age_values[i])
+  
+  return( temp )
+}
+```
+
+```{r}
+## test the function
+male_05_17 = read_and_format("../../data/Obesity+Prevalence+by+ZIP+Code+and+Age+Group,+Males.xlsx",
+                             "male", 1)
+male_18_34 = read_and_format("../../data/Obesity+Prevalence+by+ZIP+Code+and+Age+Group,+Males.xlsx",
+                             "male", 2)
+```
+
+### For Loops
+
+- To repeatedly call the same function for different values, a *for loop* is very useful.
+
+- Here is a simple example of a for loop in R to add up the numbers from 4 to 10.
+
+```{r}
+## initialize a container to keep the sum
+my_sum = 0
+
+## i is an index variable which will take on the values from 4 to 10 in the loop
+## We print the values of i and my_sum at each stage so you can see how they change as the loop executes
+## cat() concatenates objects into a single string and here writes to the console
+## The symbol \n refers to a carriage return (new line)
+
+for ( i in 4:10 )
+{
+  cat("i =", i, "\n")
+  my_sum = my_sum + i
+  cat("my_sum =", my_sum, "\n")
+}
+
+## Show the final value
+my_sum
+```
+
+#### Double for loop
+
+- It is possible to write a *double for loop*
+- There are two separate indices
+- The inner loop repeats in its entirety for each single pass through the outer loop.
+- Here is an example.
+
+```{r}
+my_sum = 0
+for ( i in 1:5 )
+{
+  for ( j in 1:3 )
+  {
+    my_sum = my_sum + i*j
+    cat("i =", i, ", j =", j, ", add", i*j, "and get", my_sum, "\n")
+  }
+}
+
+my_sum
+```
+
+### For loops to read the obesity data
+
+- We write a second function
+which uses two nested for loops to read the data for all sexes and age ranges,
+combining the data sets as each new one is read in.
+- The outer loop goes over the two sexes and the inner loop goes over the indices of the age ranges.
+- The function creates an initial empty `tibble`.
+- Each sheet is read into a temporary data frame which is then bound (using `bind_rows()`) to the initial one until the initial one has grown
+to be the complete data frame.
+- Note that `bind_rows()` only works when the columns are compatible.
+
+```{r read-all-obesity-function}
+read_obesity = function()
+{
+  ## Create an empty container to hold the data as we read it in
+  obesity = tibble()
+  ## vector of the two sexes
+  sexes = c("female","male")
+  ## the next several lines create a vector of length 2
+  ## which has the two file names, #1 for female, #2 for male
+  ## Use str_c() to combine the parts of the strings into a vector of strings part-wise
+  files = str_c("../../data/",
+                "Obesity+Prevalence+by+ZIP+Code+and+Age+Group,",
+                c("+Females", "+Males"),
+                ".xlsx")
+
+  for ( s in 1:2 ) ## s is an index into files and sexes
+  {
+    for ( i in 1:5 ) ## i+3 is the sheet and i is an index into age
+    {
+      ## temporary object with a data from a single sheet
+      temp = read_and_format(files[s],sexes[s],i)
+      ## add the data we just read in to the combined data set
+      obesity = bind_rows(obesity,temp)
+    }
+  }
+  
+  ## change zip from numerical to character
+  obesity = obesity %>%
+    mutate(zip = as.character(zip))
+  
+  ## reorder the columns
+  obesity = obesity %>% 
+    select(zip, sex, age, everything())
+  
+  return( obesity )
+}
+```
+
+### Read and Save the Data
+
+- Now call the function and save the obesity data.
+
+```{r read-obesity}
+obesity = read_obesity()
+
+head(obesity)
+
+dim(obesity)
+
+write_csv(obesity, "../../data/obesity.csv")
+```
+
+- The long format data has advantages for many purposes.
+- We can easily add new columns,
+such as prevalence of obesity
+among sampled patients for each zip/sex/age combination,
+or the total estimated number of such people in the population.
+- We can filter to select certain characteristics (only males, only one age group).
+- We can also aggregate (sum over zip codes, sexes, or whatever we want).
+
+
+### Understanding the Data
+
+- There is one row (case) per zip code, sex, and age cohort.
+- `zip`: the zip code
+    - there are 774 zip codes from Wisconsin represented in the data set
+    - we will use this data as a key to other data sets
+- `sex`: either *male* or *female*   
+    - we will be interested to see if there are obesity differences between the sexes
+- `age`: is an age range with possible values *5-17*, *18-34*, *35-54*, *55-74*, and *75+*
+    - we will be interested to examine differences by age
+    - note that we have not obesity data on individuals age four years or younger
+- `obese`: the number of obese individuals in the *sample*
+- `n`: the sample size (people whose sex, age, BMI, and obesity status were measured)
+- `pop`: the population in that zip code of the total number of people of a given age and sex
+- There is substantial missing data in the data set.
+
+### Estimation
+
+- We are interested in knowing things about all people in the state of Wisconsin
+- We would like to know the obesity status for everyone in the population.
+- However, we only have this information for a subset
+- If we assume that the obesity proportion of unsampled people is the same as sampled people within each zip code, sex, and age range, we can *estimate* the numbers of obese and non-obese people in each.
+- With these estimates of the population, we can aggregrate in various ways and make estimates at the state level.
+- Add columns for the estimated number of obese and non-obese people in each row.
+
+```{r}
+obesity = obesity %>% 
+  mutate(obese_pop = pop * (obese/n),
+         non_obese_pop = pop * (1 - obese/n))
+
+head(obesity)
+```
+
+### Questions
+
+#### 1
+
+> According to US Census Bureau estimates, the population of Wisconsin was about 5.76 million people in 2015.
+What is the total population of people represented in this data set?
+Why do these values disagree?
+
+```{r}
+prob1 = obesity %>% 
+  select(pop) %>% 
+  summarize(pop = sum(pop))
+
+## Sum of populations in data set
+prob1
+
+## Wisconsin population
+wi_pop = 5.76 * 10^6
+wi_pop
+
+## Difference
+wi_pop - pull(prob1,pop)
+```
+
+
+
+
+
+
+
+#### Answer
+
+- The data set does not include children aged 4 years and younger.
+
+
+#### 2
+
+> Calculate the total population within each zip code and store these 774 values in a new data frame.
+Make a box plot of these values.
+Calculate the minimum, lower quartile (0.25 quantile),
+the median, the upper quartile (0.75 quantile),
+and the maximum of these values.
+
+
+```{r}
+
+```
+
+
+
+#### Answer
+
+```{r}
+## count total population by zip code
+prob2 = obesity %>% 
+  select(zip, pop) %>% 
+  group_by(zip) %>% 
+  summarize(pop = sum(pop))
+
+## box plot
+ggplot(prob2, aes(x=0, y=pop)) +
+  geom_boxplot() +
+  xlab("") +
+  ylab("Population") +
+  scale_x_continuous(breaks = NULL, labels = NULL) +
+  scale_y_continuous(label = comma)
+
+## quantiles
+### short version using quantile()
+prob2 %>% 
+  pull(pop) %>% 
+  quantile()
+
+## explicit with summarize() in the tidyverse
+prob2 %>% 
+  summarize(min = min(pop),
+            q25 = quantile(pop, 0.25),
+            median = median(pop),
+            q75 = quantile(pop, 0.75),
+            max = max(pop))
+```
+
+- The data has a very strong right skew.
+- There are a few highly populated zip codes.
+- A typical zip code has just a few thousand people.
+
+#### 3
+
+> Estimate the overall proportion of obesity in Wisconsin.
+Calculate the total number of obese people in Wisconsin and divide by the total number of people in zip code / sex / age cohorts where there is an estimate of the number of obese people. (You will need to drop rows prior to making the calculation.)
+Express the value as a percentage rounded to one decimal place.
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+#### Answer
+
+```{r}
+prob3 = obesity %>% 
+  drop_na() %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob3$obese_pct
+```
+
+
+#### 4
+
+> Repeat the previous problem, but do so separately for females and males.
+
+```{r}
+
+```
+
+
+
+
+
+
+
+#### Answer
+
+```{r}
+prob4 = obesity %>% 
+  drop_na() %>% 
+  group_by(sex) %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob4
+```

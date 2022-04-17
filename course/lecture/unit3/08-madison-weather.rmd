@@ -1,0 +1,236 @@
+---
+title: "Madison Weather"
+author: "Bret Larget"
+output: html_document
+---
+
+This R Markdown document includes contributions from Professor Jessi Kehe.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,  message=FALSE, warning=FALSE, cache=TRUE,
+                      autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(lubridate)
+library(scales)
+```
+
+## Temperature Trends over Time
+
+- We will examine trends in average temperature over time.
+
+```{r}
+## read in the data
+official = read_csv("../../data/madison-weather-official-2020.csv",
+                    col_types = cols( name = col_character(),
+                                      date = col_date(format = ""),
+                                      prcp = col_double(),
+                                      snow = col_double(),
+                                      snow_depth = col_double(),
+                                      tmin = col_double(),
+                                      tmax = col_double(),
+                                      tavg = col_double()))
+```
+
+## Annual average temperature
+
+- Calculate the average temperature per year
+    - Select variables
+    - Drop missing values
+    - Group and summarize
+- Plot versus the year
+- Examine trends
+
+```{r}
+mw1 = official %>% 
+  ## select date and tavg; no other variables needed
+  select(date, tavg) %>% 
+  ## drop any rows with missing data (this is why we did select() first)
+  drop_na() %>% 
+  ## use the lubridate function year() to extract the year from the date
+  mutate(year = year(date)) %>% 
+  ## group by year
+  group_by(year) %>% 
+  ## calculate the average temperature by each year
+  summarize(tavg = mean(tavg))
+
+mw1
+```
+
+- Now, plot the data
+
+```{r}
+ggplot(mw1, aes(x = year, y = tavg)) +
+  geom_line() +
+  geom_smooth(se = FALSE)
+```
+
+- The pattern we see is:
+    - the average temperature increased from about 45.5 degrees Fahrenheit in 1870 up to about 46.8 degrees around 1940.
+    - then, temperatures went down for about 30 years, bottoming out in 1970
+    - since then, the average temperature has increased over two degrees Fahrenheit
+    - the rate that the average temperature is increasing is accelerating
+- We could improve the plot with better labels and a title
+
+## Temperature by 30-year period
+
+- Meteorologists often determine weather norms by averaging over a 30-year period.
+- Let's find the means of the maximum, average, and minimum temperatures by period and month.
+    - We will ignore the years 1869 and 1870 to create five 30-year periods.
+    - The first period is 1871 - 1900, the second 1901 - 1930, and so on.
+    
+```{r}
+## add year and period variables to the official data set
+## Note that the formula floor( (year - 1841)/30 )*30 + 1841 maps:
+##    the years from 1841 to 1870 to 1841;
+##    the years from 1871 to 1900 to 1871; and so on
+## This value plus 29 is the end of the period
+## Use str_c() from stringr to combine the different strings into the period value
+##   1841 - 1870, 1871 - 1900, 1901 - 1930, 1931 - 1960, 1961 - 1990, 1991 - 2020
+official = official %>% 
+  mutate(year = year(date),
+         month = month(date, label = TRUE),
+         period1 = floor( (year - 1841)/30 )*30 + 1841,
+         period = str_c(period1, "-", period1 + 29))
+
+## Now group by period and month and calculate the averages
+mw2 = official %>% 
+  filter(year > 1870) %>% 
+  select(date, year, month, period, tmin, tavg, tmax) %>% 
+  drop_na() %>% 
+  group_by(period, month) %>% 
+  summarize(n = n(), tmin = mean(tmin), tavg = mean(tavg), tmax = mean(tmax))
+```
+
+- Plot the data
+    - Use different facets by month
+    - Line plots
+    - Line color associated with min / avg / max
+    
+```{r}
+g = ggplot(mw2, aes(x = period)) +
+  geom_line(aes(y = tmin, group = 1), color = "blue") +
+  geom_line(aes(y = tavg, group = 1), color = "purple") +
+  geom_line(aes(y = tmax, group = 1), color = "red") +  
+  xlab("") +
+  ylab("Temperature (Fahrenheit)") +
+  ggtitle("Madison Mean Temperature by Month",
+          subtitle = "Red = maximum, Purple = average, Red = low") +
+  theme( axis.text.x = element_text(angle = 45, hjust=1)) +
+  facet_wrap( ~ month)
+
+g
+```
+
+- If we use different scales for each month, it will be easier to see trends within the months
+    
+```{r}
+g + 
+  facet_wrap( ~ month, scales = "free")
+```
+
+- There are differences among months in changes in average temperatures over time
+- The largest increases in maximum temperature have occured in the colder months, November through March.
+- Many months saw a decrease in mean low temperature, with some trending higher in the past thirty years
+
+# Lecture: Daily Temperature Records
+
+- Find the daily maximum and minimum temperatures for each day of the year in different data frames
+- Record the year and the temperature for each record
+- If there are ties, have a separate row for each year
+- So, the resulting tables may have more than 366 rows.
+- The command `slice_max()` will do what we want, finding the top values including ties.
+
+## Temperature records
+
+- Begin by re-reading in the official weather data
+- Add year, month, and day variables
+- Select the maximum temperature and time variables
+
+```{r}
+## re-read in the data
+official = read_csv("../../data/madison-weather-official-2020.csv",
+                    col_types = cols( name = col_character(),
+                                      date = col_date(format = ""),
+                                      prcp = col_double(),
+                                      snow = col_double(),
+                                      snow_depth = col_double(),
+                                      tmin = col_double(),
+                                      tmax = col_double(),
+                                      tavg = col_double()))
+```
+
+- Add the time variables
+
+```{r}
+official = official %>% 
+  mutate(year = year(date), month = month(date, label=TRUE), day = day(date))
+```
+
+- Calculations for record high and low maximum and minimum daily temperatures
+
+```{r}
+daily_tmax_high = official %>% 
+  select(date, year, month, day, tmax) %>% 
+  drop_na() %>% 
+  group_by(month, day) %>%
+  slice_max(tmax, n=1) %>% 
+  ungroup()
+
+daily_tmax_low = official %>% 
+  select(date, year, month, day, tmax) %>% 
+  drop_na() %>% 
+  group_by(month, day) %>%
+  slice_min(tmax, n=1) %>% 
+  ungroup()
+
+daily_tmin_high = official %>% 
+  select(date, year, month, day, tmin) %>% 
+  drop_na() %>% 
+  group_by(month, day) %>%
+  slice_max(tmin, n=1) %>% 
+  ungroup()
+
+daily_tmin_low = official %>% 
+  select(date, year, month, day, tmin) %>% 
+  drop_na() %>% 
+  group_by(month, day) %>%
+  slice_min(tmin, n=1) %>% 
+  ungroup()
+```
+
+## Questions
+
+> On what date did Madison have the highest recorded temperature? What was the this temperature and how many different times was it achieved?
+
+```{r}
+daily_tmax_high %>% 
+  slice_max(tmax, n=1)
+```
+
+- On July 14, 1936, Madison had an all-time high temperature of 107.
+- This is the only date with a high temperature this high
+
+> Which dates have the most ties for the highest temperature?
+
+```{r}
+daily_tmax_high %>% 
+  count(month, day) %>% 
+  ungroup() %>% 
+  slice_max(n)
+
+daily_tmax_high %>% 
+  filter(month == "May", day == 17)
+```
+
+- The May 17 record high of 86 degrees has been achieved five times: 1906, 1962, 1971, 1987, and 2001.
+
+> What is the record latest date in the spring where the daily minimum temperature was below 32 degrees Fahrenheit? In which years did this occur?
+
+```{r}
+daily_tmin_low %>% 
+  filter(month < "Jul", tmin < 32) %>% 
+  arrange(desc(month), desc(day)) %>% 
+  head()
+```
+
+- On June 10, 1972, the low temperature in Madison was 31 degrees Fahrenheit. This is the latest spring frost recorded.

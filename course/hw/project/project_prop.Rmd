@@ -1,0 +1,61 @@
+---
+title: "project_prop"
+author: "Kai Tsuyoshi"
+date: "11/20/2021"
+output: html_document
+---
+## Project Proposal
+
+
+## Group 311C: Kai Tsuyoshi, Fei Qin, William Fan, Jason Fan, Nihar Simhadri
+
+
+## Communication Plan: 
+- Use email for document and dataset attachments back-and forth
+- For general meetings to collaborate, Zoom will be used if the group cannot meet in person
+- Main meetings during or after discussion sections every Monday
+- Get-stuff-done meetings on Fridays (for meeting deadlines, discussing issues, etc.)
+
+
+
+## Questions of Interest
+- What season (split dates up into four seasons) tends to have the most occurrences of hurricanes?
+- average length of hurricanes (time dissipated - time formed) by season
+- mean speed?
+- most damage / death?
+- hypothesis test for likelihood of a repeat of the most destructive hurricane?
+
+## Data Source
+- CSV was created by extracting data from https://en.wikipedia.org/wiki/List_of_United_States_hurricanes
+
+## Data Description
+- Is a dataset of hurricanes that made landfall in the US
+- Variables are as follows: name(chr), date formed(chr), date dissipated(chr), mph(dbl), damage(chr) (monetary value), deaths(dbl)
+- 141 observations
+- Each observation is a hurricane that made landfall with the above variables
+
+## Graph 
+- facet_wrap() graph showing occurrences of hurricanes by season or by length
+  - could be color-coded based on name or another variable
+
+
+## Methods
+- A regression model of damage and/or deaths 
+- Compare distribution to a normal curve??
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, fig.height = 3)
+library(tidyverse)
+library(lubridate)
+library(scales)
+source("../../scripts/viridis.R")
+```
+
+
+```{r}
+hurricanes = read_csv("../../data/hurricanes.csv")
+
+hurricanes
+
+```
+

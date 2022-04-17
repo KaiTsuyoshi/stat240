@@ -1,0 +1,107 @@
+---
+author: Kai Tsuyoshi
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+## Discussion 1
+
+### The week of September 13--17, 2021
+#### 11:59pm 24 hours after your discussion section meets
+
+### Preliminaries
+
+Edit the YAML section of this document and change `REPLACE_THIS_TEXT_WITH_YOUR_NAME` with your name.
+
+Then, follow the instructions in the Course Notes to set up your computer:
+
+[https://bookdown.org/bret_larget/stat-240-case-studies/prerequisites.html](https://bookdown.org/bret_larget/stat-240-case-studies/prerequisites.html)
+
+If you have not already done so:
+
+- move this file (`disc01.Rmd`) into the directory `COURSE/discussion/disc01`
+
+### Problems
+
+#### 1.
+
+The following chunk of code will test if R is installed.
+
+```{r}
+set.seed(2021)
+rpois(1, 25)
+```
+
+The output will be the characters `[1]` followed by a number. What is the number?
+
+24
+
+#### 2.
+
+The next block of code tests if you have installed the tidyverse properly.
+ 
+```{r}
+library(tidyverse)
+data(trees)
+summarize(trees, n=n(), average=mean(Height))
+```
+
+The output will be a table that indicates the number of rows (n) of the data set `trees` and the average of the variable `Height`. What is the average of the variable `Height`, listed under the word **average** in the output?
+
+76
+
+#### 3.
+
+Make sure that the current file is in the directory `COURSE/discussion/disc01`.
+
+**Set this as your working directory.**
+
+The following code chunk should list the names of the files and directories two levels up, which should be the (mostly empty) sub-directories you created.
+If this is not what you see in the knitted HTML document,
+then verify that your directory structure is correct and that this file is in the correct location.
+
+```{r}
+as.data.frame( list.dirs(path = "../..", recursive = FALSE) )
+```
+
+#### 4.
+
+Verify that you can read in a data file
+
+The next code chunk reads in the Lake Mendota data, prints the variable names, and prints the dimensions of the data set.
+
+```{r}
+## read the data
+mendota = read_csv("../../data/lake-mendota-winters-2021.csv")
+
+## print variable names
+names(mendota)
+
+## dimensions
+dim(mendota)
+```
+
+What is the name of the first variable in the data set?
+
+winter
+
+How many rows are in the data set?
+
+166
+
+### Submission
+
+After completing the assignment,
+click on the Knit icon to knit to HTML.
+This action will create a file named `disc01.html` in the directory `COURSE/discussion/disc01`.
+This is the file you should upload to complete your assignment.
+
+To submit this assignment, go to our Canvas site and select "Assignments" on the left panel.
+Follow directions to upload the HTML file.
+
+*Note: do not upload the .Rmd file. Also, if you knitted to PDF or Word instead of HTML, click the small down arrow to the right of the `Knit` icon and select `Knit to HTML`* 
+  
+  

@@ -1,0 +1,379 @@
+---
+title: "Introduction to the dplyr package"
+author: "Bret Larget"
+output: html_document
+---
+
+The Markdown document includes contributions from Professor Jessi Kehe
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+library(tidyverse)
+library(lubridate)
+library(scales)
+```
+
+## Overview of dplyr
+
+- The dplyr package has functions and verbs for making changes to data sets using a grammar of data manipulation.
+
+- From the [dplyr website](https://dplyr.tidyverse.org/), some of the most common verbs needed to accomplish this are listed below.
+
+    - `mutate()` *adds new variables that are functions of existing variables*  
+    - `select()` *picks variables based on their names*  
+    - `filter()` *picks cases based on their values*  
+    - `summarize()` *reduces multiple values down to a single summary*  
+    - `arrange()` *changes the ordering of the rows*  
+
+
+## dplyr cheatsheet
+
+- There are many cool things you can do using the dplyr package and we won't be able to go through everything this semester.
+- The [dplyr cheatsheet](https://raw.githubusercontent.com/rstudio/cheatsheets/master/data-transformation.pdf) is a useful summary of the package to keep handy.
+
+## Examples
+
+```{r}
+## Read in two small example data sets
+grocery_prices = read_csv("../../data/grocery-prices.csv")
+grocery_list = read_csv("../../data/grocery-list.csv")
+
+## Merge for a single grocery list
+produce = left_join(grocery_list, grocery_prices, by = "item") 
+
+produce
+
+## mutate()
+## to add a column and save
+produce = produce %>% 
+    mutate(cost = price * quantity)
+
+produce = mutate(produce, cost = price*quantity)
+
+produce
+## select()
+produce %>% 
+    select(-item)
+
+produce %>% 
+    select(item, type)
+
+## filter()
+produce %>% 
+    filter(quantity > 1)
+
+## summarize()
+produce %>% 
+    summarize(total = sum(cost))
+
+produce %>% 
+    group_by(type) %>% 
+    summarize(n = n(),
+              total = sum(cost))
+
+## arrange()
+produce %>% 
+    arrange(price)
+
+produce %>% 
+    arrange(desc(quantity))
+
+## A combination of steps
+produce %>% 
+    mutate(cost = price * quantity) %>% 
+    select(item, type, everything()) %>% 
+    arrange(desc(cost))
+```
+
+## Pipe
+
+- So what is the `%>%` doing?
+
+- Similar to how ggplot2 commands use a + to add layers to a plot, in dplyr, we use the *pipe* command %>% to take the output from one command to “pipe it into” the first argument of the next command.
+
+- All dplyr (and tidyverse) commands take a data frame (or tibble) as the first argument; most also return a data frame which can then be used as the input to an additional command.
+
+## Manipulating Cases
+
+- `filter()` — select rows by a condition  
+- `slice()` — select rows by row number  
+- `arrange()` — order rows    
+- `desc()` — used inside of `arrange()` to specify the order in descending order of a variable
+
+## Manipulate Variables
+
+- `select()` — select variables  
+    - positive to include; negative to exclude  
+    - helper functions: `starts_with()`, `ends_with()`, `contains()`, `everything()`    
+- `mutate()` — add or change one or more variables  
+- `transmute()` — add or change one or more variable, remove the `rest()`
+- `rename()` — change the name of a variable
+
+## Grouping and Summarizing 
+
+- `summarize()` — compute a table of summaries  
+    - See the second page of the Cheatsheet for a large vocabulary of summarizing functions  
+- `group_by()`
+    - create groups; often used prior to `summarize()` or `mutate()` with the effect that summaries are calculated by `group()`
+
+## Combining Data Sets
+
+- `bind_cols()`
+    - combine two data frames that have the same observations by binding together columns  
+- `bind_rows()`
+    — combine two data frame that have the same variables by binding together rows  
+- `left_join()`, `right_join()`, `inner_join()`, `full_join()`
+    — functions that mutate one or both data frames to join them together
+
+## Illustrations
+
+- We are not going to cover in detail all the options presented above, but you will learn more during the Madison Weather lectures and from working with **dplyr** on your own.
+- We will illustrate many of the **dplyr** functions showing how to transform and wrange the raw Lake Mendota and exoplanet data sets.
+- Once you get the general idea, the world of R data frames will be your playground.
+
+### Lake Mendota
+
+- Begin by reading in the raw Lake Mendota data.
+
+```{r read-data}
+mendota_raw = read_csv("../../data/lake-mendota-raw-2021.csv")
+head(mendota_raw)
+
+## dimensions
+dim(mendota_raw)
+```
+
+- From the background reading, we are told that there are multiple rows per year in some years as each freeze interval has its own row and some years have multiple freeze intervals.
+    - We can check this counting the number of rows in each winter using `count()` and then finding the minimum and maximum of these values.
+    - The function `count()` returns a data frame with a variable named `n` that records the number of rows.
+    - If called with one or more arguments, it groups by those and before counting.
+
+```{r}
+### Check number of intervals per winter
+### Show how count() works
+mendota_raw %>% 
+    count(winter)
+
+### Now, pipe directly into the summary
+
+### Calculate the smallest and largest
+mendota_raw %>% 
+    count(winter) %>% 
+    summarize(min = min(n), max = max(n))
+```
+
+- Some winters have two intervals. Let's see which ones do.
+    - Use `filter()` to find out
+
+```{r}
+## Note the use of == to test for equality
+mendota_raw %>% 
+    count(winter) %>% 
+    filter(n == 2)
+```
+
+- There are seven winters with two freeze intervals.
+- Next, create a data frame named `mendota_interval` with one row per interval
+    - Recalculate the `duration` variable
+    - Create `year1` AND `year2` variables
+    - Change `closed` and `open` into proper dates
+- Note the use of `separate()` which separate `winter` into `year1` and `year2`.
+    - The argument `remove = FALSE` retains winter as a variable
+
+```{r}
+mendota_interval = mendota_raw %>%
+## drop the days column and rows with missing data
+## the days variable had missing data in the first year
+##   of winters with multiple freeze intervals,
+##   so we needed to remove the column before calling drop_na()    
+  select(-days) %>% 
+  drop_na() %>% 
+## get the year1 and year2 numeric variables
+  separate(winter,into = c("year1","year2"), remove = FALSE)
+
+head(mendota_interval)
+```
+
+- Note that `year1` and `year2` are both  character valued
+    - Change `year1` to a number and recalculate `year2`
+    
+```{r}
+mendota_interval = mendota_interval %>%
+  mutate(year1 = as.numeric(year1)) %>%
+  mutate(year2 = year1+1)
+
+head(mendota_interval)
+```
+
+- Next, work on the dates
+- We need to use **lubridate** functions for this.
+- The variables `closed` and `open` contain the month and day, but the correct year is `year1` for months July through December and `year2` for January through June.
+- Here, we use `case_when()` inside of `mutate()` for conditional changes.
+- Any date that does not match either of the first two cases will match `TRUE` and be given the specific character value for missing data, `NA_character_`.
+- The function `str_c()` create a string by combining strings together.
+- The new strings are in the order day, month, year
+- The **lubridate** function `dmy()` converts a string with this order into a date.
+    - There are other similar variables, such as `mdy()` and `ymd()`.
+
+```{r}
+mendota_interval = mendota_interval %>%
+## add the correct year to the month and day for the closed and open columns
+  ## then convert the strings to dates with dmy()
+  mutate(closed = case_when(
+    str_detect(closed,"Jul|Aug|Sep|Oct|Nov|Dec") ~ str_c(closed,' ',year1),
+    str_detect(closed,"Jan|Feb|Mar|Apr|May|Jun") ~ str_c(closed,' ',year2),
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(closed = dmy(closed)) %>%
+  mutate(open = case_when(
+    str_detect(open,"Oct|Nov|Dec") ~ str_c(open,' ',year1),
+    str_detect(open,"Jan|Feb|Mar|Apr|May") ~ str_c(open,' ',year2),
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(open = dmy(open)) %>% 
+  ## recalculate the number of days closed with ice
+  mutate(duration = as.numeric(open - closed))
+
+head(mendota_interval)
+```
+
+- Next, we want to create a second data set with one row per year
+    - `duration` is the sum of all of the durations
+    - `first_freeze` is the earliest close date
+    - `last_thaw` is the latest open date
+
+```{r}
+## create a new data set with one row per winter
+## we only need to group by winter to do the summary
+## also group by year1 and year2 so we retain these variables after summarize()
+mendota = mendota_interval %>% 
+  group_by(winter, year1, year2) %>% 
+  summarize(intervals = n(),
+            duration = sum(duration),
+            first_freeze = min(closed),
+            last_thaw = max(open))
+
+head(mendota)
+```
+
+- Finally, add a decades variable as a string.
+- `floor()` rounds down to the nearest integer
+- By dividing by 10, rounding down, and multiplying again by ten, we round down to the nearest decade
+
+```{r}
+mendota = mendota %>%
+  mutate(decade = floor(year1 / 10) * 10)
+
+head(mendota)
+```
+
+- Finally, use `select()` to reorder the variables
+- The helper variable `everything()` will keep all additional variables in their order
+
+```{r}
+mendota = mendota %>%
+## reorder the columns
+  select(winter, year1, year2, decade, everything())
+
+head(mendota)
+```
+
+#### Combining the steps
+
+- In practice, we may put all of the code to transform these data into a single R chunk.
+    - We would build the code by doing each step and verifying the results before adding the next one.
+    
+```{r}
+## transform interval data
+mendota_interval = mendota_raw %>%
+  select(-days) %>% 
+  drop_na() %>% 
+  separate(winter,into = c("year1","year2"), remove = FALSE) %>% 
+    mutate(year1 = as.numeric(year1)) %>%
+  mutate(year2 = year1+1) %>% 
+      mutate(closed = case_when(
+    str_detect(closed,"Jul|Aug|Sep|Oct|Nov|Dec") ~ str_c(closed,' ',year1),
+    str_detect(closed,"Jan|Feb|Mar|Apr|May|Jun") ~ str_c(closed,' ',year2),
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(closed = dmy(closed)) %>%
+  mutate(open = case_when(
+    str_detect(open,"Jul|Aug|Sep|Oct|Nov|Dec") ~ str_c(open,' ',year1),
+    str_detect(open,"Jan|Feb|Mar|Apr|May|Jun") ~ str_c(open,' ',year2),
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(open = dmy(open)) %>% 
+  mutate(duration = as.numeric(open - closed))
+
+## summarize per year
+mendota = mendota_interval %>% 
+  group_by(winter, year1, year2) %>% 
+  summarize(intervals = n(),
+            duration = sum(duration),
+            first_freeze = min(closed),
+            last_thaw = max(open)) %>% 
+     mutate(decade = floor(year1 / 10) * 10) %>% 
+    select(winter, year1, year2, decade, everything())
+```
+    
+### Exoplanets
+
+- The raw data set has many  columns that we do not want.
+- We also want to rename several columns
+
+```{r}
+## Read the data, skipping the first 100 lines
+planets = read_csv("../../data/exoplanets_default_2021-06-15.csv",
+                   skip = 100)
+dim(planets)
+```
+
+- There are 92 columns.
+- Use `select()` to choose those that we want
+- Then pipe into `rename()` to change the names.
+
+```{r}
+planets = planets %>% 
+  select(pl_name, hostname, discoverymethod, disc_year, sy_pnum, pl_rade, pl_bmasse) %>%
+  rename(planet = pl_name,
+         star = hostname,
+         method = discoverymethod,
+         year = disc_year,
+         number = sy_pnum,
+         radius = pl_rade,
+         mass = pl_bmasse)
+
+head(planets)
+```
+
+- Here are a few more illustrations.
+
+- Count the number of rows with non-missing radius measurements
+- Use `select()` followed by `rm_na()`, then count
+
+```{r}
+planets %>% 
+    select(radius) %>% 
+    drop_na() %>% 
+    nrow()
+```
+
+- Do the same for `mass`.
+
+```{r}
+planets %>% 
+    select(mass) %>% 
+    drop_na() %>% 
+    nrow()
+```
+
+- How many observations have both radius and mass?
+
+```{r}
+planets %>% 
+    select(mass, radius) %>% 
+    drop_na() %>% 
+    nrow()
+```
+
+

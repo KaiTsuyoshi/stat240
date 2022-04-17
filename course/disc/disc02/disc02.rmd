@@ -1,0 +1,146 @@
+---
+title: "STAT 240 Discussion 2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+library(tidyverse)
+library(scales)
+```
+
+## Group Name Group 311:6 (replace XXX with the assigned group name)
+
+## Contributing Group Members
+
+- Reena Singhal, Jiahua Pan, **Kai Tsuyoshi**
+
+## Group Members Who Did Not Contribute
+
+- Fei Qin, Malavika Unnikrishnan
+
+## Exoplanet Data
+
+We will be working with the default data set on exoplanets (planets orbiting stars outside our Solar System).
+The data is described in the [Exoplanet Chapter of the Course Notes](https://bookdown.org/bret_larget/stat-240-case-studies/exoplanets.html).
+We will only be exploring the mass, radius, and discovery method variables.
+
+```{r read-data, echo = FALSE}
+## Read in the csv file
+## The first 100 lines of the file contain comments: we skip them.
+## There is one row per exoplanet 
+## Select some variables that we will work with and rename them
+## Drop rows with missing data
+
+planets = read_csv("exoplanets_default_2021-06-15.csv", skip = 100) %>%
+  select(pl_name, discoverymethod, pl_rade, pl_bmasse) %>%
+  rename(planet = pl_name,
+         method = discoverymethod,
+         radius = pl_rade,
+         mass = pl_bmasse) %>% 
+  drop_na()
+```
+
+The variables we will be working with are defined below. See the course notes for more details.
+
+`planet` = Planet Name  
+`method` =  Method by which the planet was first identified  
+`radius` = Planet Radius (units: Earth Radius)  
+`mass` = Approximate or Minimum Planet Mass (units: Earth Mass)  
+
+## Questions
+
+### Question 1
+
+> Make a scatter plot with `radius` (the estimate of the planet radius) on the x-axis and `mass` (the estimate of the planet mass) on the vertical axis.
+
+```{r question-1}
+  ggplot(planets) +
+  geom_point(mapping = aes(x = radius, y = mass)) +
+  xlab("Radius (Earth Radius") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets Mass vs. Radius",
+  subtitle = "Using NASA Explanet Archive Data")
+```
+
+
+### Question 2
+
+> When variables are strongly skewed to the right
+(there are more observatons much larger than the median than there are observations much lower than the median)
+and when all observations are positive,
+it often aids visualization to examine the data on the log scale.
+Take your code from the previous plot and add the layers provided below.
+Describe how the plot changes.
+
+```{r question-2}
+
+  ggplot(planets, aes(x = radius, y = mass)) +
+  geom_point()+
+  scale_x_log10() +
+  scale_y_log10() +
+  xlab("Radius (Earth Radius") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets Mass vs. Radius",
+          subtitle = "Using NASA Explanet Archive Data")
+```
+
+
+### Question 3
+
+> Make a scatter plot like the previous problem,
+but use the `color` aesthetic for `method` (discovery method).
+
+```{r question-3}
+
+  ggplot(planets, aes(x = radius, y = mass, color = method)) +
+  geom_point()+
+  scale_y_log10() +
+  scale_x_log10() +
+  xlab("Radius") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets Mass vs. Radius",
+          subtitle="Using NASA Explanet Archive Data")
+```
+
+
+### Question 4
+
+- Which discovery method was used to detect the most exoplanets in our `planet` data frame?  
+
+Transit
+
+- What general pattern do you notice between planet mass and radius?  
+
+Mass and radius have a positive linear (approximate) correlation 
+
+- What is the estimated radius (approximately) of the most massive planet included on the plot?
+
+12
+
+
+
+### Question 5
+
+> Another way to display differences by discovery method is to separate the plot into multiple panels (or facets) and plot different subsets of the data in each.
+> We are going to look at planet mass versus radius again.
+> Add a comment to say what the code on the next line does where indicated.
+
+
+```{r question-5}
+## uncomment and complete code below
+# 
+  ggplot(planets, aes(x=radius, y=mass)) +
+  geom_point() +
+  ## ADD A COMMENT SAYING WHAT THE NEXT LINE DOES
+  # Response:Adds a smooth line that is fitted to the data
+  geom_smooth(method="lm", se=FALSE) +
+  ## ADD A COMMENT SAYING WHAT THE NEXT LINE DOES
+  # Response:Creates separate subplots of the data, (based on method of discovery)
+  facet_wrap(~method) +
+  xlab("Radius") +
+  ylab("Mass (Earth Mass)") +
+  ggtitle("Exoplanets Mass vs. Radius",
+          subtitle="Using NASA Explanet Archive Data")
+```
+

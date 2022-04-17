@@ -1,0 +1,454 @@
+---
+title: "Boston Marathon Analysis"
+author: "Bret Larget"
+output: html_document
+---
+
+This R Markdown document includes contributions by Professor Jessi Kehe.
+
+\renewcommand{\prob}{\mathsf{P}}
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+
+### Setup details
+
+- This lecture use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+    
+- You also need the Boston Marathon times
+    - `COURSE/data/TIM1.txt`
+
+- You will need the package `tidyverse` for these lectures. 
+
+- The code uses **readr** function `read_table()` which assumes a version number at least 2.0.0.
+    - If your **readr** version number is older, please update.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+## The Boston Marathon
+
+- The Boston Marathon is the world's oldest annual marathon competition.
+- It has been run every year since 1897 (one year after the first modern marathon competition in the 1896 Olympic Games), except for 2020 due to the COVID-19 pandemic
+- In most years, the Boston Marathon is held on Patriot Day, the third Monday of April, but in 2021 was delayed to October.
+- The 2013 race was stopped prematurely, preventing many competitors from finishing, due to a terrorist bombing near the finish line which killed three spectators and injured hundreds of people.
+- The length of a marathon race is 26.2 miles, or about 42.65 km.
+- Entrance in the Boston Marathon requires obtaining a qualifying time based on age and sex in a qualified marathon race in the 18 months prior.
+
+### Populations and Samples
+
+- The data we use are from all finishers in the years 2010 and 2011.
+- The original data includes some results from 2013.
+- The purpose the data was collected was to estimate the finishing times of competitors who were not allowed to complete the race due to the bombing.
+- Not all individuals who are eligible to compete in the Boston Marathon in a given year actually compete.
+- We will consider the observed data as representative samples from the populations of people worldwide eligible to race in the Boston Marathon and would finish the race in the given years.
+- Various questions will consider sub-populations based on the age and sex of the competitors.
+- The age of a competitor is determined by their age on the date of the race.
+- There are different records and sub-competitions based on sex and various age ranges: 18-34, 35-39, 40-44, \ldots, 75-79, and 80 and older.
+- There are typically thousands of runners in the race.
+- Not all runners can start at the same time: runners begin the race in stages and run with chips in their shoes which allows accurate individual times to be calculated.
+- The Madison Marathon was held yesterday, November 14, 2021.
+
+### Data Wrangling
+
+- Data source: [Boston Maraton Data](https://rls.sites.oasis.unc.edu/boston.html)
+
+- The data set `TIM.txt` contains all times from 2010, 2011, and 2013.
+
+- We make the following changes to the original data:
+    - Eliminate the year 2013 as many racers did not finish due to the bombing
+    - Create a `Sex` variable
+    - Sum the times for racers for different race segments to obtain a total time
+    - Add an `Age_Range` variable
+- Note the use of `read_table()` to read in the data
+    - The `col_types` argument is set so that each column is read in as type *double* by default.
+
+
+```{r}
+bm_orig = read_table("../../data/TIM.txt",
+                col_types = cols(.default = col_double()))
+
+bm = bm_orig %>% 
+  filter(!is.na(`K40-Fin`)) %>% 
+  filter(Year < 2013) %>% 
+  arrange(Year, BibNum) %>% 
+  select(-starts_with("Start"), -HalfMar, -Age2014) %>% 
+  mutate(Sex = case_when(
+    Gender1F2M == 1 ~ "female",
+    Gender1F2M == 2 ~ "male")) %>% 
+  mutate(Time = pmap_dbl(select(., starts_with("K")), sum)) %>% 
+  mutate(age1 = case_when(
+    Age < 35 ~ 18,
+    Age >= 80 ~ 80,
+    TRUE ~ floor(Age/5)*5),
+    age2 = case_when(
+      Age < 35 ~ 34,
+      TRUE ~ age1 + 4),
+    Age_Range = case_when(
+      age1 == 80 ~ "80 and older",
+      TRUE ~ str_c(age1,"-",age2))) %>% 
+  select(-Gender1F2M, -age1, -age2) %>% 
+  relocate(BibNum, Year, Sex, Age, Age_Range, Time)
+
+```
+
+### Variables
+
+- The transformed data set has these variables:
+    - `BibNum`: bib number, a unique identifier for each competitor within a year
+    - `Year`" either 2010 or 2011
+    - `Sex`: female or male
+    - `Age`: age in years
+    - `Age_Range`: from 18-34, 35-39, ..., 75-79, and 80 and older
+    - `Time`: total time to finish in decimal minutes
+    - `K0-5` through `K40-Fin`: times in decimal minutes for 5 km segments of the race plus the final shorter segment.
+    
+### Data Explorations
+
+- We present a few data explorations
+
+#### Number of Competitors by Year, Age, and Age Range
+
+```{r}
+bm %>% 
+  count(Year, Sex, Age_Range) %>% 
+  pivot_wider(names_from = Age_Range,
+              values_from = n)
+```
+
+
+```{r}
+bm %>% 
+  filter(Year == 2010) %>% 
+ggplot(aes(x = Sex, fill = Sex)) +
+  geom_bar() +
+  xlab("") +
+  ylab("# of Finishers") +
+  ggtitle("2010 Boston Marathon Finishers") +
+  facet_wrap(~Age_Range)
+
+bm %>% 
+  filter(Year == 2011) %>% 
+ggplot(aes(x = Sex, fill = Sex)) +
+  geom_bar() +
+  xlab("") +
+  ylab("# of Finishers") +
+  ggtitle("2011 Boston Marathon Finishers") +
+  facet_wrap(~Age_Range)
+```
+
+#### Times
+
+```{r}
+bm %>% 
+  group_by(Year, Sex, Age_Range) %>% 
+  summarize(n = n(),
+            min = min(Time),
+            q10 = quantile(Time, 0.10),
+            median = median(Time),
+            q90 = quantile(Time, 0.90)) %>% 
+  print(n = Inf)
+```
+
+
+```{r}
+bm %>% 
+  filter(Year == 2010) %>% 
+ggplot(aes(x = Sex, y = Time, fill = Sex)) +
+  geom_boxplot(coef = Inf) +
+  xlab("") +
+  ylab("Finish Times") +
+  ggtitle("2010 Boston Marathon Finishers") +
+  facet_wrap(~Age_Range)
+
+bm %>% 
+  filter(Year == 2011) %>% 
+ggplot(aes(x = Sex, y = Time, fill = Sex)) +
+  geom_boxplot(coef = Inf) +
+  xlab("") +
+  ylab("Finish Times") +
+  ggtitle("2011 Boston Marathon Finishers") +
+  facet_wrap(~Age_Range)
+```
+
+## Estimation of a Population Mean
+
+- Let's consider females marathon runners good enough to qualify for and finish the 2010 Boston Marathon, aged 18-34, and estimate the mean time such runners would have finished had they competed.
+- We consider the population to be all women aged 18-34 who are eligible for the Boston Marathon and able to finish to complete the course in 2010.
+
+### Statisical Model
+
+- Let $\mu$ be the mean time in minutes for this population.
+- Our data is the 3557 times of the women in this age group who actually did complete the race, $x_1, \ldots, x_n$ for $n = 3557$.
+- We model the data as if being drawn from some distribution $F$ with mean $\mu$ and standard deviation $\sigma$ and as if they are independent observations.
+
+$$
+X_i \sim F(\mu, \sigma) \quad \text{for $i = 1, \ldots, n$}
+$$
+
+### Data Summary
+
+- The finishing times for our sample.
+
+```{r}
+prob1 = bm %>% 
+  filter(Sex == "female",
+         Age_Range == "18-34",
+         Year == 2010)
+
+prob1_sum = prob1 %>% 
+  summarize(n = n(),
+            mean = mean(Time),
+            sd = sd(Time))
+
+prob1_sum
+
+ggplot(prob1, aes(x = Time)) +
+  geom_density(fill = "lightpink", color = "black") +
+  geom_hline(yintercept = 0) +
+  xlab("Finishing Time") +
+  ggtitle("2010 Boston Marathon",
+          subtitle = "Women aged 18-34") +
+  theme_minimal()
+  
+```
+
+- Our point estimate is $\bar{x} = `r round(prob1_sum$mean, 3)`$ minutes
+- Note that the distribution of finishing times in the same is not normally distributed: will this affect our method to construct a confidence interval?
+- We are interested in the **sampling distribution of the sample mean**
+
+
+### Simulation
+
+- To explore the normality question, we do the following simulation experiment
+- Treat the sample as an estimate of the underlying population
+- Take random samples of size 3557 (with replacement) from the sample
+- Calculate the sample mean of each resampled data set
+- Repeat many times
+- Examine center (mean), spread (standard deviation), and shape of the sampling distribution of the sample mean
+
+```{r}
+B = 50000
+x = prob1 %>% pull(Time)
+
+set.seed(20211115)
+sample_means = tibble(
+  xbar = map_dbl(1:B, ~{
+  return( mean(sample(x, replace = TRUE)) )
+}))
+
+sim1_sum = sample_means %>% 
+  summarize(n = n(),
+            mean = mean(xbar),
+            sd = sd(xbar))
+
+sim1_sum
+
+ggplot(sample_means, aes(x = xbar)) +
+  geom_density(fill = "lightpink", color = "black") +
+  geom_norm_density(sim1_sum$mean, sim1_sum$sd) +
+  geom_hline(yintercept = 0) +
+  xlab("Finishing Time Sample Means") +
+  ggtitle("2010 Boston Marathon, Women aged 18-34",
+          subtitle = "Sampling Distribution of xbar, n = 3557") +
+  theme_minimal()
+```
+
+- The ideal blue normal density matching the mean and sd of the sampling distribution is very close to the simulated density
+
+### Repeat for Smaller n
+
+- Let's look at the shape if $n=50$ instead
+
+```{r}
+B = 50000
+n = 50
+x = prob1 %>% pull(Time)
+
+set.seed(20211115)
+sample_means = tibble(
+  xbar = map_dbl(1:B, ~{
+  return( mean(sample(x, size = n, replace = TRUE)) )
+}))
+
+sim2_sum = sample_means %>% 
+  summarize(n = n(),
+            mean = mean(xbar),
+            sd = sd(xbar))
+
+sim2_sum
+
+ggplot(sample_means, aes(x = xbar)) +
+  geom_density(fill = "lightpink", color = "black") +
+  geom_norm_density(sim2_sum$mean, sim2_sum$sd) +
+  geom_hline(yintercept = 0) +
+  xlab("Finishing Time Sample Means") +
+  ggtitle("2010 Boston Marathon, Women aged 18-34",
+          subtitle = "Sampling Distribution of xbar, n = 50") +
+  theme_minimal()
+```
+
+- Note that the sampling distribution of the sample mean has an approximate normal shape, even for a much smaller sample size such as $n=50$, despite the skewed population.
+
+### Back to a Confidence Interval
+
+- The sample mean is $\bar{x} = `r round(prob1_sum %>% pull(mean), 3)`$
+- The sample standard deviation of finishing times is
+$s = `r round(prob1_sum %>% pull(sd), 3)`$
+- The SE estimated from the simulation is
+$\text{SE}(\bar{x}) = `r round(sim1_sum %>% pull(sd), 3)`$
+
+$$
+(\text{point estimate}) \pm z \text{SE}
+$$
+
+$$
+235.505 \pm 1.96(0.609)
+$$
+
+```{r}
+z = qnorm(0.975)
+ci = prob1_sum$mean + c(-1,1)*z*sim1_sum$sd
+round(ci,3)
+```
+
+### Interpretation
+
+> We are 95% confident that the mean finishing time of women aged 18-34 capable of finishing the Boston Marathon in 2010 would have been between 234.31 and 236.70 minutes.
+
+#### Rounding Rule of Thumb
+
+- A good rule of thumb for rounding is to round the margin of error to two significant digits and round the estimate to the same accuracy.
+
+## Formula Instead of Simulation
+
+- As with proportions, there is a formula we could have used instead of simulation to determine the standard error
+
+$$
+\text{SE}(\bar{x}) = \frac{\sigma}{\sqrt{n}}
+$$
+
+- where $\sigma$ is the population standard deviation.
+
+- We can replace the $\sigma$ with the sample standard deviation.
+    - When $n$ is quite large, such as $n = 3557$ in our example, $s$ is typically a very accurate estimate of $\sigma$
+    - Examine our example
+    
+```{r}
+## Simulation SE
+sim1_sum$sd
+
+## Formula
+prob1_sum$sd / sqrt(prob1_sum$n)
+```
+    
+## Built-in R Function
+
+- There is also a built-in R function `t.test()` which does a hypothesis test and a confidence interval.
+- Here, ignore the hypothesis test output
+- Note the use of the t distribution which accounts for replacing $\sigma$ with $s$
+    - For $n = 3557$, this makes very little difference.
+    
+```{r}
+t.test(x)
+```
+
+- Instead of using the 0.975 quantile from a standard normal distribution, $z = `r qnorm(0.975)`$
+- Use instead $t = `r qt(0.975, 3557-1)`$
+
+## More Problems
+
+- If time, do confidence intervals for other subsets of the data
+
+#### Smaller sample size
+
+- Here is an artificial example with $n=50$
+- Use a quantile from the t distribution instead of standard normal
+
+```{r}
+## new sample
+n = 50
+new_x = sample(x, size = n)
+new_x_mean = mean(new_x)
+new_x_sd = sd(new_x)
+new_x_se = new_x_sd / sqrt(n)
+t_mult = qt(0.975, n-1)
+new_x_mean
+new_x_sd
+new_x_se
+t_mult
+
+new_ci = new_x_mean + c(-1,1) * t_mult * new_x_se
+new_ci
+
+## compare to t.test
+t.test(new_x)
+```
+
+> For the artificial sample of size $n=50$, we are 95% confident that the mean finishing time among all women aged 18-34 who completed the Boston Marathon is between 225.3 and 246.6 minutes.
+
+- Note that this confidence interval did capture the sample mean from all 3557 women.
+- We would expect about 95% of confidence intervals from artificial samples of size $n=50$ to include the actual sample mean.
+
+### Explore 95% Capture Probability
+
+- Repeatedly take samples of size 50 from the sample
+- Calculate 95% confidence intervals
+- See how many contain the sample mean from all 3557
+
+```{r}
+B = 50000
+n = 50
+t_mult = qt(0.975, n-1)
+x = prob1$Time
+mu = mean(x)
+sigma = sd(x) * sqrt(3556/3557)
+mu
+sigma
+
+capture_base = vector("list", B)
+
+capture_sim = map_dfr(capture_base, ~{
+  samp = sample(x, size = n, replace = TRUE)
+  out = tibble(xbar = mean(samp),
+         sd = sd(samp),
+         se = sd/sqrt(n),
+         low = xbar - t_mult*se,
+         high = xbar + t_mult*se)
+  return ( out )
+})
+```
+
+### Find captures
+
+```{r}
+capture_sim = capture_sim %>% 
+  mutate(capture = low < mu & mu < high) %>% 
+  mutate(index = row_number()) %>% 
+  relocate(index)
+
+capture_sim %>% 
+  summarize(mean(capture))
+
+capture_sim %>% 
+  sample_n(100) %>% 
+  mutate(index = row_number()) %>% 
+ggplot(aes(x = low, xend = high, y = index, yend = index, color = capture)) +
+  geom_segment() +
+  geom_vline(xintercept = mu, color = "red", linetype = "dashed") +
+  xlab("Mean Marathon Time") +
+  ggtitle("2010 Boston Marathon, Women aged 18-34",
+          subtitle = "Sampling Distribution of xbar, n = 50") +
+  theme_minimal()
+  
+```
+
+
+

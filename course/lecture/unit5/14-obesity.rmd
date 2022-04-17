@@ -1,0 +1,304 @@
+---
+title: "Wisconsin Obesity"
+author: "Bret Larget"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+library(tidyverse)
+library(scales)
+source("../../scripts/viridis.R")
+```
+
+### Read the Data
+
+```{r}
+obesity = read_csv("../../data/obesity.csv",
+                   col_types = cols(
+                     zip = col_character(),
+                     sex = col_character(),
+                     age = col_character(),
+                     obese = col_double(),
+                     n = col_double(),
+                     pop = col_double())) %>% 
+  mutate(obese_pop = pop * (obese/n),
+         non_obese_pop = pop * (1 - obese/n))
+
+head(obesity)
+```
+
+### Questions
+
+
+#### 5
+
+> The definition of obesity is different for children than for those aged 18 years and older. Find the obesity rate of children overall, and then separately for female and male children.
+
+```{r}
+
+```
+
+
+
+
+#### Answer
+
+```{r}
+prob5a = obesity %>% 
+  drop_na() %>% 
+  filter(age == "05-17") %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob5a
+
+prob5b = obesity %>% 
+  drop_na() %>% 
+  filter(age == "05-17") %>% 
+  group_by(sex) %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob5b
+```
+
+#### 6
+
+> Find the estimated obesity rate for all Wisconsin adults, and then female and male adults separately.
+
+```{r}
+
+```
+
+
+#### Answer
+
+> All adults
+
+```{r}
+prob6a = obesity %>% 
+  drop_na() %>% 
+  filter(age != "05-17") %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob6a
+```
+
+> Separately by sex
+
+```{r}
+prob6b = obesity %>% 
+  drop_na() %>% 
+  filter(age != "05-17") %>% 
+  group_by(sex) %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob6b
+```
+
+#### 7
+
+> Create a summary data frame with the estimated obesity rate for each sex and age cohort (so, ten separate estimates in total).
+Plot these estimates with a bar graph with age on the x axis and color to indicate sex. (Use `position = "dodge"` to avoid stacking.)
+
+```{r}
+
+```
+
+> Comment on patterns.
+
+#### (a)
+
+> Are differences between male and female obesity rates similar for all age groups? If not, can you give a possible reason to explain the difference?
+
+#### (b)
+
+> Why are the obesity rates in children so different than in adults?
+Provide a reason.
+
+#### (c)
+
+> Describe how obesity rates change among men and women as the population ages. What possible factor best explains the difference between obseity rates among those aged 55-74 and those 75 and older, do you think?
+
+
+
+
+
+
+
+
+#### Answer
+
+```{r}
+prob7 = obesity %>% 
+  drop_na() %>% 
+  group_by(age, sex) %>% 
+  summarize(obese = sum(obese_pop),
+            pop = sum(pop),
+            obese_pct = 100*obese/pop)
+
+prob7
+
+ggplot(prob7, aes(x=age, y = obese_pct, fill=sex)) +
+  geom_col(position = "dodge")
+```
+
+> Comment on patterns.
+
+#### (a)
+
+> Are differences between male and female obesity rates similar for all age groups? If not, can you give a possible reason to explain the difference?
+
+- In most age groups, the obesity of males is slightly higher than that of females.
+- The one exception is 18-34 years of age.
+- The most plausible explanation is that some women will be pregnant during these ages and will be labeled as obese while pregnant, even if they are not typically.
+
+#### (b)
+
+> Why are the obesity rates in children so different than in adults?
+Provide a reason.
+
+- The definition of obesity is very different for children (be among the top 5% of BMI for age and sex) than it is for adults (have a BMI of 30 or higher).
+
+#### (c)
+
+> Describe how obesity rates change among men and women as the population ages. What possible factor best explains the difference between obseity rates among those aged 55-74 and those 75 and older, do you think?
+
+- The most plausible explanation is differential survival rate. A larger percentage of obese people die before reaching age 75 than do non-obese people.
+
+
+### Read the Data
+
+- Read the Wisconsin rural/urban data from *wi-urban-rural.csv*.
+
+```{r}
+ru = read_csv("../../data/wi_urban_rural.csv")
+
+head(ru)
+```
+
+### Understanding the Rural/Urban Data
+
+- The US Census Bureau areas as rural or urban based on population density.
+- Rural areas are open country or settlements with fewer than 2,500 residents.
+- Urban areas are more densely settled areas and need not follow municipal boundaries.
+- A single zip code might contain both rural and urban areas.
+- The Wisconsin rural/urban data set we read in has nine columns, but we are only interested in three of these.
+    - `Id2` which is the zip code
+    - `Urban:` which is the population that lives in urban areas
+    - `Rural` which is the population that lives in rural areas
+- The variable `Total:` is the sum of these two, but we can sum these ourselves if needed.
+- The urban totals are subdivided, but we only need the total.
+
+#### Transform the Rural/Urban Data
+
+- We transform the data so that there are only these three columns and we rename them.
+- We also change zip to character valued so it will match the same column in the obesity data.
+
+```{r}
+ru = ru %>% 
+  select(Id2, `Urban:`, Rural) %>% 
+  rename(zip = Id2,
+         urban = `Urban:`,
+         rural = Rural) %>% 
+  mutate(zip = as.character(zip))
+
+head(ru)
+```
+
+### Merging the Data
+
+- Next, we want to merge the obesity and rural/urban data sets.
+- However, the obesity data set has the population for each zip code broken down by sex and age group.
+- We will start by reducing the obesity data to one line per zip code by summing the number of obese and non-obese people in each across all ages
+- We will need to eliminate rows with missing data.
+- Note that the total number of people from the obesity data will be less than from the rural/urban data because:
+    - The obesity data does not include children age 4 years and younger
+    - The rural/urban data was collected in 2017, not 2015
+    - Some people are lost due to censoring data from zip codes where some age/sex cohorts had small counts.
+    
+```{r}
+## Summarize the Obesity Data by Zip Code
+obesity2 = obesity %>% 
+  drop_na() %>% 
+  group_by(zip) %>% 
+  summarize(pop = sum(pop),
+            obese_pop = sum(obese_pop),
+            non_obese_pop = sum(non_obese_pop))
+
+head(obesity2)
+```
+
+- Notice that the `obesity2` data set only has data from 581 of the 774 Wisconsin zip codes.
+- Next, we want to join the rural/urban data with the obesity data by zip code.
+- We will keep the obesity data as primary, and add the `rural` and `urban` columns for the remaining zip codes.
+- Note the use of `left_join()`.
+
+```{r}
+obesity2 = obesity2 %>% 
+  left_join(ru, by = "zip")
+
+head(obesity2)
+```
+
+### Obesity Rate versus Urbanization
+
+- Next, let's calculate the proportion of obese people and the proportion of people living in urban areas for each zip code and add columns with this data.
+
+```{r}
+obesity2 = obesity2 %>% 
+  mutate(p_obese = obese_pop / (obese_pop + non_obese_pop),
+         p_non_obese = 1 - p_obese,
+         p_urban = urban / (urban + rural),
+         p_rural = 1 - p_urban)
+
+head(obesity2)
+```
+
+- Graph these two quantitative variables with a scatter plot.
+    - Put `p_urban` on the x axis as an explanatory variable
+    - Put `p_rural` on the y axis as a response variable
+    - Add a trend line
+    
+```{r}
+ggplot(obesity2, aes(x=p_urban, y=p_obese)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm")
+```
+    
+#### Observations
+
+- Many zipcodes are either 100% urban or 100% rural.
+- There is a tendency for a greater obesity prevalence in more rural zip codes
+- There is considerable variation from zip code to zip code
+- The plot may be improved in many ways:
+    - axis labels and titles
+    - scales
+    - include population data?
+    
+```{r}
+library(scales)
+ggplot(obesity2, aes(x=p_urban, y=p_obese, size=pop)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = FALSE, method = "lm", show.legend = FALSE) +
+  ## represent the x and y axes with percentages
+  ## accuracy = 1 means round to a whole number
+  ##   (use accuracy = 0.1 or 0.2, for example, to round to one digit)
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  ## Change the legend title from "pop" to "Population"
+  scale_size_continuous(name = "Population") +
+  xlab("%Urban") +
+  ylab("%Obese") +
+  ggtitle("Wisconsin Obesity by Zip Code") +
+  ## change the background to white
+  theme_bw()
+```
+ 

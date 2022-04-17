@@ -1,0 +1,401 @@
+---
+title: "Airport Waiting Times"
+author: "Bret Larget"
+output: html_document
+---
+This R Markdown document includes contributions from Professor Jessi Kehe.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(lubridate)
+library(XML) #For reading in HTML files
+## Note: this code assumes viridis.R is two steps up the file directory tree in a `scripts` folder
+source("../../scripts/viridis.R")
+```
+
+## Function to read in waiting time data
+
+```{r stuff-for-all-airports}
+## Input:  x = HTML file
+## Output: nicely formatted tibble
+read_airport =  function(x)
+{
+  airport_column_names = c("airport",
+                           "terminal",
+                           "date",
+                           "hour",
+                           "us_avg_wait",
+                           "us_max_wait",
+                           "non_us_avg_wait",
+                           "non_us_max_wait",
+                           "all_avg_wait",
+                           "all_max_wait",
+                           "all_n_0_15",
+                           "all_n_16_30",
+                           "all_n_31_45",
+                           "all_n_46_60",
+                           "all_n_61_90",
+                           "all_n_91_120",
+                           "all_n_120_plus",
+                           "all_excluded",
+                           "all_total",
+                           "all_flights",
+                           "all_booths")
+
+  airport = readHTMLTable(x)$`NULL` %>%
+    slice(-(1:3))
+
+  names(airport) = airport_column_names
+
+  airport = airport %>%
+    as_tibble() %>%
+    mutate(across(ends_with("wait") | starts_with("all"), as.numeric)) %>% 
+    mutate(across(where(is.factor),as.character)) %>% 
+    mutate(date = mdy(date))
+  
+  return( airport )
+}
+```
+
+## Read the Data
+
+```{r read-data}
+## read the individual data sets
+den = read_airport("../../data/DEN-2018.html")
+jfk = read_airport("../../data/JFK-2018.html")
+lax = read_airport("../../data/LAX-2018.html")
+msp = read_airport("../../data/MSP-2018.html")
+ord = read_airport("../../data/ORD-2018.html")
+sfo = read_airport("../../data/SFO-2018.html")
+
+## combine into one data set
+awt = bind_rows(den, jfk, lax, msp, ord, sfo)
+
+## remove the individual ones
+rm(den, jfk, lax, msp, ord, sfo)
+```
+
+## Questions
+
+1. Are some airports more efficient that than others in terms of average wait time?  
+    - Are some airports more efficient in the number of people served by hour per available booth?
+
+2. Are some months busier than others?  
+    - Are some days of the week busier than others?  
+    - Are some times during the day busier than others?  
+
+3. How does the proportion of people who get through customs in less than 30 minutes depend on other factors?  
+
+## Airport efficiency
+
+> Are some airports more efficient than others in terms of average wait time?
+
+```{r efficient}
+ggplot(awt, aes(x=airport, y=all_avg_wait, color=airport)) +
+  geom_boxplot()
+```
+
+- We can adjust the plot by reordering the airports in descending order by the median of their average waiting time for all passengers.
+- Here, I do not save the reordering of the airports
+- The modified data set is piped into `ggplot()`
+
+```{r}
+awt %>%
+  mutate(airport = reorder(airport,-all_avg_wait, FUN=median)) %>% 
+  #`airport` as factor with levels ordered according to -all_avg_wait and FUN value
+  ggplot(aes(x=airport, y=all_avg_wait, color=airport)) +
+  geom_boxplot() +
+  ggtitle("Are some airports more efficient that than others in terms of average wait time?")
+```
+
+
+> Are some airports more efficient in the number of people served by hour per available booth?
+
+- Calculate the average number of people served per hour per booth
+- There are a few ways to consider how to calculate this
+- Here, we do the calculation separately for each airport and hour during the day
+    - We then calculate the total number of passengers and the total number of booths each hour, then divide
+- An alternative could be to calculate the rate for row of the data set and then to find the average (or median) of these rates    
+### method 1
+
+```{r people-per-hour-per-booth}
+awt %>%
+  group_by(airport, hour) %>%
+  summarize(total = sum(all_total),
+            booth_total = sum(all_booths)) %>%
+  mutate(per_booth = round(total/booth_total,2)) %>%
+  select(-total, -booth_total) %>%
+  ggplot(aes(hour, per_booth, color=airport)) +
+  geom_point() +
+  geom_hline(yintercept=45, linetype="dashed",color="red") +
+  facet_wrap(~airport) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ylab("Passengers per booth") +
+  ggtitle("Are some airports more efficient", 
+          subtitle = "in the number of people served by hour per available booth?")
+```
+
+- There do appear to be differences between the efficiency (in terms of passengers per booth per hour) among the airports.
+- For example, MSP seems to be more efficient (in the noted sense) regularly serving more than 45 passengers per booth per hour.
+- SFO seems to serve fewer than 45 passengers per booth per hour most of the time.
+
+### Second method
+
+```{r people-per-hour-per-booth-2}
+awt %>%
+  mutate(rate = all_total / all_booths) %>% 
+  group_by(airport, hour) %>%
+  summarize(rate_mean = mean(rate),
+            rate_median = median(rate)) %>% 
+  ggplot(aes(x = hour, y = rate_median, color=airport)) +
+  geom_point() +
+  geom_hline(yintercept = 45,
+             linetype = "dashed", color = "red") +
+  facet_wrap(~ airport) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ylab("Passengers per booth") +
+  ggtitle("Are some airports more efficient", 
+          subtitle = "in the number of people served by hour per available booth?")
+```
+
+
+## Busy times
+
+> Are some months busier than others?
+
+- Begin by adding a month variable and then reordering the columns
+- Also add weekday for future use
+
+```{r}
+awt = awt %>% 
+  mutate(month = month(date, label = TRUE),
+         wday = wday(date, label = TRUE)) %>% 
+  select(airport, terminal, date, month, everything())
+```
+
+
+- Count the total number of passengers by month and sort.
+
+```{r months}
+awt %>%
+  group_by(month) %>%
+  summarize(total = sum(all_total)) %>%
+  arrange(desc(total))
+```
+
+- The previous summary is affected by different numbers of days in each month.
+- Calculate the average daily rate of passengers by month.
+- (Recall that May has only 30 observations.)
+
+- Key idea here is to first summarize by month and day, and then by month,
+in order to get the total number of passengers in each month
+and the number of days in each month.
+
+```{r busy-months}
+busy_months = awt %>%
+  mutate(day = day(date)) %>%
+  group_by(month, day) %>%
+  summarize(total = sum(all_total)) %>%
+  group_by(month) %>%
+  summarize(n = n(), total = sum(total), daily = total/n) %>%
+  arrange(desc(daily))
+
+ggplot(busy_months, aes(x=month, y=daily)) +
+  geom_col(fill = "blue", color = "black") +
+  scale_y_continuous(labels = comma) +
+  xlab("") +
+  ylab("# Arrivals") +
+  ggtitle("Daily International Arrival Totals", subtitle = "at six selected US Airports")
+```
+
+- It looks like the summer months (July, August, June) are the busiest in terms of number of passengers traveling per day for the airports in our data.
+
+
+> Are some days of the week busier than others?  
+
+```{r busy-weekdays}
+# We first need to count the number of each day of the week in 2018
+busy_wdays = awt %>%
+  group_by(date, wday) %>%
+  summarize(total = sum(all_total)) %>%
+  group_by(wday) %>%
+  summarize(n=n(), total = sum(total))  %>%
+  mutate(daily=round(total/n,2)) %>%
+  arrange(desc(daily)) 
+busy_wdays
+
+ggplot(busy_wdays, aes(x = wday, y = daily)) +
+  geom_col(fill = "blue", color = "black") +
+  scale_y_continuous(labels = comma) +
+  xlab("Day of the week") +
+  ylab("Average number of passengers") +
+  ggtitle("Are some days of the week busier than others?")
+```
+
+> Are some times during the day busier than others?  
+
+```{r busy-times}
+busy_times = awt %>%
+  group_by(date, hour) %>%
+  summarize(total = sum(all_total)) %>%
+  group_by(hour) %>%
+  summarize(n = n(), total = sum(total))  %>%
+  mutate(hourly = round(total/n,2)) %>%
+  arrange(desc(hourly)) 
+busy_times
+
+ggplot(busy_times, aes(x = hour, y = hourly)) +
+  geom_col(fill = "blue", col = "black") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  +
+  xlab("Time of the day") +
+  ylab("# of passengers") +
+  ggtitle("Average Hourly International Arrivals", subtitle = "at six select US airports")
+
+```
+
+## Getting through customs quickly
+
+> How does the proportion of people who get through customs in less than 30 minutes depend on other factors?  
+
+```{r add-proportions}
+## Add columns for proportion less than 30 minutes and proportion more than an hour
+awt = awt %>%
+  mutate(p_less_30 = (all_n_0_15 + all_n_16_30) / all_total,
+         p_more_60 = (all_n_61_90 + all_n_91_120 + all_n_120_plus) / all_total)
+```
+
+#### Factor: Airport
+
+```{r less30-airport}
+awt %>%
+  mutate(airport = reorder(airport,p_less_30,FUN=median)) %>%
+ggplot(aes(x=airport,y=p_less_30,color=airport)) +
+  geom_boxplot() +
+  ggtitle("Proportion of people through customs in < 30 minutes depend on other factors?",
+          subtitle = "Factor: airport")
+```
+
+#### Factor: Hour
+
+```{r less30-hour}
+## Fraction of passengers per hour that go through in < 30 minutes
+awt %>%
+  group_by(hour) %>%
+  summarize(total = sum(all_total),
+          n_less_30 = sum(all_n_0_15) + sum(all_n_16_30),
+          p_less_30 = n_less_30 / total,
+          booths = sum(all_booths)) %>%
+  ggplot(aes(hour,p_less_30, size = booths)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Proportion of people through customs in < 30 minutes depend on other factors?",
+          subtitle = "Factor: hour")
+```
+
+
+
+#### Factor: Airport and Hour
+
+```{r less30-airport-hour}
+## Fraction of passengers per airport and per hour that go through in < 30 minutes
+awt %>%
+  group_by(airport,hour) %>% 
+  summarize(total = sum(all_total),
+            n_less_30 = sum(all_n_0_15) + sum(all_n_16_30),
+            p_less_30 = n_less_30 / total,
+            booths = sum(all_booths)) %>%
+  ungroup() %>% ## airport is a grouping variable and cannot be mutated
+  mutate(airport = reorder(airport,p_less_30,FUN=mean)) %>%
+  ggplot(aes(x=airport, y=p_less_30,fill=airport)) +
+  geom_col() +
+  facet_wrap(~hour) + 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  ggtitle("Proportion of people through customs in < 30 minutes depend on other factors?",
+          subtitle = "Factor: airport and hour")
+```
+
+```{r less30-airport-hour-check}
+# It looks like some of the airports do not have passengers in certain time windows
+# Is that correct?  
+awt %>% 
+  filter(airport=="MSP") %>%
+  group_by(hour) %>%
+  summarize(tot = sum(all_total))
+```
+
+
+```{r less30-airport-hour-2}
+## Let's try a scatterplot of the same information as the previous graphic
+## -> which is easier to interpret?
+## Fraction of passengers per airport and per hour that go through in < 30 minutes
+awt %>%
+  group_by(airport,hour) %>% 
+  summarize(total = sum(all_total),
+            n_less_30 = sum(all_n_0_15) + sum(all_n_16_30),
+            p_less_30 = n_less_30 / total,
+            booths = sum(all_booths)) %>%
+  ggplot(aes(x=hour, y=p_less_30,color=airport, shape=airport)) +
+  geom_point() +
+  # facet_wrap(~airport) +
+  # geom_hline(yintercept=0.8, color="red", linetype="dashed") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Proportion of people through customs in < 30 minutes depend on other factors?",
+          subtitle = "Factor: airport and hour")
+```
+
+
+
+#### Factor: Number of Booths and Hour
+
+```{r less30-booth-hour}
+# Look at passengers per booth vs. hour
+# Color based on proportion who wait less than 30 minutes
+# Consider size based on the number of booths open
+awt %>%
+  group_by(airport,hour) %>% 
+  summarize(total = sum(all_total),
+            n_less_30 = sum(all_n_0_15) + sum(all_n_16_30),
+            p_less_30 = n_less_30 / total,
+            booths = sum(all_booths)) %>%
+  mutate(passenger_per_booth = total/booths) %>%
+  ggplot(aes(hour,passenger_per_booth, color=p_less_30, size = booths)) +
+  geom_point() +
+  geom_hline(yintercept=45, color="red", linetype="dashed") +
+  facet_wrap(~airport) +
+  ylab("Number of passengers per available booth") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Proportion of people through customs in < 30 minutes depend on other factors?",
+          subtitle = "Factor: booth and hour")
+```
+
+
+
+```{r less30-booth-hour-2}
+# Look at proportion who wait less than 30 minutes vs. hour
+# Color based on proportion number of passengers per booth
+awt %>%
+  group_by(airport,hour) %>% 
+  summarize(total = sum(all_total),
+            n_less_30 = sum(all_n_0_15) + sum(all_n_16_30),
+            p_less_30 = n_less_30 / total,
+            booths = sum(all_booths)) %>%
+  mutate(passenger_per_booth = total/booths) %>%
+  ggplot(aes(hour,p_less_30, color=passenger_per_booth)) +
+  geom_point() +
+  geom_hline(yintercept = .8, color="red", linetype="dashed")+
+  facet_wrap(~airport) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Proportion of people through customs in < 30 minutes depend on other factors?",
+          subtitle = "Factor: booth and hour")
+```
+
+
+
+> Can you think of your own questions to address with this data set?
+
+
+
+

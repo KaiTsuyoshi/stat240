@@ -1,0 +1,70 @@
+---
+title: "Background"
+author: "Kai Tsuyoshi"
+date: "11/27/2021"
+output: html_document
+---
+Introduce the background and one or more general questions of interest
+Answer: average length of hurricanes (time dissipated - time formed) by season (setting the season by date formed rather than dissipated)
+
+Describe data with information about these questions
+Describe the data source, who collects it, how it is made available, and so on.
+Answer: The data source we’re using was created by using a python program to extract data from a Wikipedia page about hurricanes (https://en.wikipedia.org/wiki/List_of_United_States_hurricanes). The data was collected for a project from CS220 about hurricanes. We got this from https://github.com/msyamkumar/cs220-f21-projects/tree/main/p6 and it was made available by the instructors.
+
+Provide a description of key variables in the data you will examine to address these questions
+This could be in a paragraph or a table
+	Answer: First, we’ll mutate to create two columns, one for length between formed and dissipated and one for season. Using this information, we can find the average length of hurricanes by season
+ Describe a connection between the data and one or more refined questions of interest
+
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, fig.height = 3)
+library(tidyverse)
+library(lubridate)
+library(scales)
+source("../../scripts/viridis.R")
+```
+
+
+```{r}
+hurricanes = read_csv("../../data/hurricanes.csv")
+
+hurricanes = hurricanes %>% 
+  mutate(formed = as.Date(formed, "%m/%d/%Y")) %>% 
+  mutate(dissipated = as.Date(dissipated, "%m/%d/%Y")) %>% 
+  mutate(year = year(formed), month = month(formed, label = TRUE), day = mday(formed), wday = wday(formed, label = TRUE)) %>% 
+  mutate(season = case_when(month %in% c("Mar", "Apr", "May") ~ "Spring",
+            month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+            month %in% c("Sep", "Oct", "Nov") ~ "Fall",
+            month %in% c("Dec", "Jan", "Feb") ~ "Winter"))
+
+hurricanes
+```
+
+
+Here is a graph 
+```{r}
+hurricanes$length = difftime(hurricanes$dissipated, hurricanes$formed, units = c("days"))
+
+
+
+hurricanes = hurricanes %>% 
+  mutate(length = as.numeric(length)) %>% 
+  arrange(month, season) 
+  
+seasonal = hurricanes %>% 
+  mutate(month = match(month,month.abb))
+
+
+ggplot(seasonal, aes(x = month, y = length, fill = season)) +
+  geom_col() +
+  facet_wrap(~season)
+ 
+
+
+```
+
+

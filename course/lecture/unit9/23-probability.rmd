@@ -1,0 +1,604 @@
+---
+title: "An Introduction to Probability and Random Variables"
+output: html_document
+---
+
+\newcommand{\E}{\mathsf{E}}
+\newcommand{\Var}{\mathsf{Var}}
+\renewcommand{\prob}{\mathsf{P}}
+
+This R Markdown document includes contributions from Professor Jessi Kehe
+
+### Setup details
+
+- You will need the package `tidyverse` for these lectures.   
+
+- Later lectures use the following scripts, assumed to be in your course scripts directory.
+    - `COURSE/scripts/viridis.R`
+    - `COURSE/scripts/ggprob.R`
+
+- The file `ggprob.R` contains a number of functions for graphing probability distributions in a tidyverse-friendly manner.
+
+### LaTeX
+
+- This R Markdown file includes substantial use of the LaTeX system for creating mathematical notation.
+- Text between dollar signs is processed and appears as mathematical notation in the output document
+- You are not responsible for learning to write such code, but may find it useful if you continue to take courses in mathematics, statistics, computer science, or the physical sciences where LaTeX is the de facto standard.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,message=FALSE,warning=FALSE,cache=TRUE,autodep=TRUE,cache.comments=FALSE)
+library(tidyverse)
+library(kableExtra)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+
+
+# Probability Distributions and Random Variables
+
+## Uncertainty
+
+- To this point in the semester, we have largely ignored uncertainty in our data.
+
+- But there are many sources and types of uncertainty we could consider:  
+  - measurement error  
+        - freeze dates of Madison lakes are partly subjective  
+        - weather observations are susceptible to error  
+  - unobserved data from unsampled cases in a population  
+        - in the obesity study, we had obesity data on samples of individuals
+  - rerunning a random process  
+        - We can think of the outcome of a sports event as a complicated succession of random events  
+        - If the same players and teams could replay a game under the same conditions, how might have outcomes been different?  
+  - prediction  
+        - What will the temperature be like tomorrow? Next year?  
+        - How many fantasy football points will Aaron Rodgers earn during his first game next season?  
+        - What will the median household income in zip code 53705 be next year?   
+
+- To discuss uncertainty, we need to develop an understanding of the subject of probability.
+
+## Probability
+
+- Probability is a branch of mathematics 
+- We will learn the subject quite informally  
+  - If you are interested in majoring in a quantitative field, I recommend taking a semester-long course in probability at some point in the future (if you haven't already)
+- Our overview of probability will focus on understanding uncertainty in statistical models.  
+- A statistical model will be a means to connect data with uncertainty to build a framework for inference.
+
+
+
+## Basic Principles of Probability
+
+- A *probability space* is a mathematical formalism that specifies how to attach probabilities to a collection of possible outcomes and events
+
+- The basic rules are:
+    - the probability of any possible event is greater than or equal to zero
+    - the probability that some outcome from the collection of all possible outcomes occurs is one
+    - the probability of the union of mutually exclusive events is the sum of the individual probabilities
+
+- There are a number of rules that follow from these basic principles
+
+### Statistical Models
+
+- We are primarily interested in probability as a tool in statistical modeling.
+- A *statistical model* is a probabilistic framework to describe a random process which can generate observable data.
+- In the context of a statistical model, we consider not only data which is observed, but data that *might have been observed if the random outcomes had been different*.
+- Every statistical model includes *model assumptions* which underly any probability calculations we might make
+- These calculations might be made for several purposes:
+    - *statistical estimation*, to estimate unknown aspects of a process, including some measures of the uncertainty in the estimate
+    - *hypothesis testing*, to provide a basis for making decisions about questions about a process
+    - *prediction*, to make statements about the chances of various unknown future outcomes
+- We will explore statistical models in a number of contexts during the rest of the semester.
+- A key feature of these statistical models is the notion of random variables.
+    - A *random variable* is a mapping from outcomes in a probability space to a set of numerical values.
+    - Before we explore statistical models in many examples, we will spend some time developing our understanding of random variables.
+
+## Random Variables
+
+- A random variable is a function that attaches a numerical value to some random outcome.
+    - The weather in Madison will result in an observed maximum temperature on a given date
+    - On December 31, 2030, Lake Mendota will either be closed (at least 50% of the surface covered by ice) or not -- an indicator random variable takes the value 1 if it is closed and 0 if it is not.
+    - For all US passengers arriving at O’Hare International airport today on flights that arrive between 5 and 6 pm, the average waiting time to go through customs will have a numerical value.
+    - In the next football game played by the Wisconsin Badgers, they will score some number of points as will their opponents.
+
+- The collection of all possible values that a random variable might take and the description of the probabilities of these values is called the *distribution* of the random variable.
+
+- In practice, most distributions of random variables may be categorized as either:
+    - continuous (possible values along a continuum, but in practice, rounded to some degree of precision during measurement); or
+    - discrete (we can list the possible values, which are potentially infinite)
+
+- There are exceptions which are a mix
+    - the total amount of precipitation in a day could be zero (discrete) or some positive amount (continuous).
+    
+-  A distribution describes where the total amount of probability is distributed among the possible values.
+
+
+
+### Continuous Distributions
+
+- For continuous random variables, we typically describe the distribution with a *probability density function* (pdf), a nonnegative function over the real line with a total area under the curve equal to one
+
+  - Probability is associated with areas over intervals under density curves to describe the probability that the random variables take a value in the interval
+  - There do exist continuous random variables not often seen in statistical models for which density functions do not exist
+    - Graduate courses in probability theory which require a lot more mathematics than we have are needed to study such distributions
+
+#### Example
+
+```{r continuous-examples, echo=FALSE}
+gnorm(mu=0,sigma=1)
+
+a = 2
+b = 5
+ggplot(tibble(x=c(a,b), y=1/(b-a)), aes(x,y)) +
+  geom_line(size=1) +
+  geom_segment(aes(xend=x, yend=rep(0,2)), size=1) +
+  geom_segment(aes(x=a-1, y=0, xend=a, yend=0)) +
+  geom_segment(aes(x=b+1, y=0, xend=b, yend=0)) +
+  ylim(c(0, 1/(b-a))) +
+  xlim(c(a-1, b+1)) +
+  scale_x_continuous(breaks = seq(a-1,b+1)) +
+  xlab("X") +
+  ylab("density")+
+  ggtitle(paste0("Uniform(",a, ", ", b, ")"))
+```
+
+
+### Discrete Distributions
+
+- For discrete random variables, we typically describe the distribution with a *probability mass function* (pmf):
+    - a nonnegative function that attaches discrete amounts of probability to specific real numbers
+    - the sum of all such probabilities over all possible values of the random variable is equal to one.
+
+#### Example
+
+```{r discrete-examples, echo=FALSE}
+## Binomial distributions
+gbinom(n=5, p=0.8)
+  
+gbinom(20, 0.2, color="red")
+```
+
+
+### Mixed Distributions
+
+- A mixed variable such as the total precipitation in a day, has:
+    - a distribution that is a combination of discrete probability mass; and
+    - a continuous probability density
+    - such that the total amount of probability is equal to one.
+
+
+## Expectation
+
+- Expectation is a probability concept that you may think of as an average.
+
+- The expected value of a random variable is:  
+      - the balancing point of the distribution  
+      - the value of the sample mean tends to the expected value as the sample size goes to infinity  
+      - the mean of the possible values, weighted by their probability  
+
+- If a random variable is designated $X$, we label its expected value $\E(X)$
+
+- We can also take the expected value of a function of a random variable  
+      - For example, the expected value of the square of a random variable, $E(X^2)$.
+      
+      
+### Mean
+
+- The mean of a random variable $X$ is $\E(X)$
+
+- We often use the Greek letter $\mu$ to represent a mean
+
+- Some distributions do not have a finite mean  
+    - We do not see these often in statistical models
+
+
+### Standard Deviation / Variance
+
+- The variance of a random variable is the expected squared difference from the mean.
+
+- $\Var(X) = \E\left((X-\mu)^2\right)$ where $\mu = \E(X)$
+
+- The standard deviation is the square root of the variance.
+
+- The variance is often denoted $\sigma^2$   
+
+- The standard deviation is then denoted as $\sigma$  
+
+-  By definition, the variance and the standard deviation cannot be negative.
+
+## Example Problems
+
+### Problem 1
+
+A discrete random variable $X$ with possible values $0,1,2,3,4$ has the following partial distribution.
+
+```{r}
+## tibble with the distribution
+prob1 = tibble(
+  x = 0:4,
+  p = c(0.15, 0.25, 0.05, 0.35, NA)
+)
+
+## long format
+prob1
+
+## pretty wide format
+prob1 %>%
+  pivot_wider(names_from = x, values_from = p) %>% 
+  mutate(x = "P(X=x)") %>% 
+  relocate(x) %>% 
+  kable() %>% 
+  kable_styling(position = "left", full_width = FALSE,
+                bootstrap_options = c("striped", "condensed"))
+  
+```
+
+What is $P(X = 4)$?
+
+#### Solution
+
+We know for discrete random variables,
+
+$$
+\sum_{x} P(X = x) = 1
+$$
+
+- Find the missing $P(X=4)$ so that the sum of probabilities is one.
+    - sum the other probabilities
+    - subtract the total from one
+    - set this to the missing probability
+
+```{r}
+partial_sum = prob1 %>% 
+  filter(x != 4) %>% 
+  summarize(sum_p = sum(p)) %>% 
+  pull(sum_p)
+
+p4 = 1 - partial_sum
+
+p4
+
+prob1 = prob1 %>% 
+  mutate(p = case_when(
+    !is.na(p) ~ p,
+    TRUE ~ p4))
+
+## long format
+prob1
+
+## pretty wide format
+prob1 %>%
+  pivot_wider(names_from = x, values_from = p) %>% 
+  mutate(x = "P(X=x)") %>% 
+  relocate(x) %>% 
+  kable() %>% 
+  kable_styling(position = "left", full_width = FALSE,
+                bootstrap_options = c("striped", "condensed"))
+
+```
+
+### Problem 2
+
+What is the mean of the random variable with the previous distribution?
+
+#### Solution
+
+Calculate
+
+$$
+\mu = \E(X) = \sum_{x=0}^4 x P(X=x)
+$$
+
+```{r}
+## Calculate the mean using base R code
+x = prob1$x
+p = prob1$p
+mu = sum(x*p)
+mu
+```
+
+
+```{r}
+## Calculate using tidyverse code
+prob2 = prob1 %>% 
+  mutate(xp = x*p) %>% 
+  summarize(mu = sum(xp))
+
+prob2
+```
+
+- Note that the mean (expected value) is a **weighted average** of the possible values of the random variable, weighted by their probabilities.
+
+### Problem 3
+
+What are the variance and standard deviation of the random variable from problem 1?
+
+#### Solution
+
+Calculate
+
+$$
+\sigma^2 = \Var(X) = \sum_{x=0}^4 (x - \mu)^2 P(X=x)
+$$
+
+```{r}
+## Base R calculation
+## Variance
+sigma2 = sum((x-mu)^2*p)
+sigma2
+
+## Standard deviation
+sigma = sqrt(sigma2)
+sigma
+```
+
+```{r}
+## Tidyverse Calculation
+## Uses base R value mu
+prob3 = prob1 %>% 
+  mutate(v = (x - mu)^2*p) %>% 
+  summarize(sigma2 = sum(v),
+            sigma = sqrt(sigma2))
+prob3
+
+```
+
+### Problem 4
+
+Draw a graph of the discrete distribution
+
+- Use line segments to represent the probabilities
+
+```{r}
+plot1 = ggplot(prob1, aes(x = x, y = p)) +
+  geom_segment(aes(xend = x, yend = 0), color = "blue") +
+  geom_hline(yintercept = 0) +
+  ylab("P(X=x)") +
+  ggtitle("Distribution of X")
+
+plot1
+```
+
+### Problem 5
+
+Add a visualization of the mean and standard deviation
+
+- Add a dashed red line at the mean
+- Add dotted red lines one standard deviation above and below the mean
+
+```{r}
+plot1 +
+  geom_vline(xintercept = mu, color = "red", linetype = "dashed") +
+  geom_vline(xintercept = mu + c(-1,1)*sigma,
+             color = "red",
+             linetype = "dotted")
+```
+
+- Note that the mean is the *balancing point* of the distribution
+    - It does not need to be a possible value of the distribution
+    
+- The majority of the probability is within one standard deviation of the mean
+
+- But there is some remaining probability outside of this interval
+
+### Problem 6
+
+Find the probability within one standard deviation of the mean
+
+```{r}
+## base R calculation
+p6 = sum(p[x >= mu - sigma & x <= mu + sigma])
+p6
+```
+
+```{r}
+## tidyverse calculation
+prob6 = prob1 %>% 
+  filter(x >= mu - sigma & x <= mu + sigma) %>% 
+  summarize(prob = sum(p))
+
+prob6
+```
+
+## A second example
+
+### Problem 7
+
+- Consider the probability distribution of a random variable $X$ with possible values $0,1,\ldots,10$ that is proportional to the function $g(x) = 6 - |x-5|$.
+- In other words,
+
+$$
+P(X = x) = c(6 - |x-5|), \quad x = 0, 1, \ldots, 10
+$$
+
+What is the value of $c$?
+
+#### Solution
+
+- We know that the probabilities need to sum to one.
+- Calculate $6 - |x-5|$ for each $x$.
+- Find the sum.
+- Let $c$ be the reciprocal of this sum.
+
+```{r}
+## base R
+x7 = 0:10
+p7 = 6 - abs(x7 - 5)
+c = 1 / sum(p7)
+p7 = c*p7
+prob7 = tibble(x = x7, p = p7)
+prob7
+```
+
+```{r}
+## A tidyverse solution
+prob7_2 = tibble(
+  x = 0:10,
+  p = 6 - abs(x - 5)) %>% 
+  mutate(p = p / sum(p))
+
+prob7_2
+```
+
+### Problem 8
+
+Graph the distribution.
+
+```{r}
+ggplot(prob7, aes(x = x, y = p)) +
+  geom_segment(aes(xend = x, yend = 0), color = "blue") +
+  geom_hline(yintercept = 0)
+```
+
+### Problem 9
+
+Find the mean and standard deviation of this distribution.
+
+#### Solution
+
+```{r}
+mu = prob7_2 %>% 
+  mutate(xp = x*p) %>% 
+  summarize(mu = sum(xp)) %>% 
+  pull(mu)
+
+mu
+
+sigma = prob7_2 %>% 
+  mutate(v = (x-mu)^2 * p) %>% 
+  summarize(sigma = sqrt(sum(v))) %>% 
+  pull(sigma)
+
+sigma
+```
+
+### Problem 10
+
+What proportion of the probability is with one standard deviation of the mean? Within two standard deviations?
+
+#### Solution
+
+```{r}
+## P(mu - sigma < X < mu + sigma)
+prob7_2 %>% 
+  filter(x >= mu - sigma & x <= mu + sigma) %>% 
+  summarize(prob = sum(p))
+
+## P(mu - sigma < X < mu + sigma)
+prob7_2 %>% 
+  filter(x >= mu - 2*sigma & x <= mu + 2*sigma) %>% 
+  summarize(prob = sum(p))
+```
+
+- The majority of the probability is within one standard deviation of the mean
+    - values near two-thirds are common, especially for unimodal and symmetric distributions
+- Most is within two standard deviations
+    - values near 95% is typical for symmetric unimodal distributions
+    
+## A third example
+
+### Problem 11
+
+The continuous random variable $U$ has a uniform distribution between 0 and 10.
+Find its density $f(x)$.
+
+#### Solution
+
+The density will be:
+
+- positive and constant between 0 and 10
+- zero outside this interval
+- have a total area of one
+
+The density has the shape of a rectangle with a base of length 10, so the height must be 0.1 to get an area of 1.
+
+$$
+f(x) = 0.1, \quad 0 < x < 10
+$$
+
+When written like this, it is implied that $f(x) = 0)$ for $x < 0$ and $x > 10$.
+
+There is also a built-in function `dunif()` to calculate the density of a uniform distribution.
+
+- The first argument `x` is the value or vector of values where we wish to calculate the density.
+- Arguments `min` and `max` are the lower and upper endpoints of the interval and have default values 0 and 1, respectively.
+
+```{r}
+## example
+tibble(x = c(-1, 0, 2, 10, 12),
+       p = dunif(x, 0, 10))
+```
+
+
+### Problem 12
+
+Plot the density function. Shade the area under the plot.
+
+#### Solution
+
+- With a continuous distribution, we pick a sequence of points on which to calculate the density
+- Here, take a regular sequence from $-1$ to 11
+- The function `geom_ribbon()` fills in the area between `ymin` and `ymax` and is useful for shading under density curves by setting `ymin` to zero.
+
+```{r}
+prob12 = tibble(
+  x = seq(-1, 11, by = 0.01),
+  f = dunif(x, 0, 10)
+)
+
+ggplot(prob12, aes(x=x)) +
+  ## shade first, then draw the density line over the top
+  geom_ribbon(aes(ymax = f, ymin = 0), fill = "thistle") +
+  geom_line(aes(y = f), color = "black") +
+  geom_hline(yintercept = 0) +
+  scale_x_continuous(breaks = c(0:10)) +
+  ylab("density") +
+  ggtitle("Uniform(0,10) Density")
+  
+```
+
+### Problem 13
+
+Estimate the mean and standard deviation by simulation.
+
+#### Solution
+
+- We would need calculus to cacluate the mean and standard deviation of this distribution
+- We can determine the mean using the balancing point intepretation.
+    - The mean must be 5
+- We can use the "about two thirds" approximation to guess the standard deviation.
+    - Two thirds of the area has length about 6.7
+    - Centered at 5, this will extend $6.7/2 = 3.35$ below and above.
+    - Guess that $\sigma \approx 3.4$.
+    
+- To estimate with simulation, use `runif()` to generate a very large number of random uniform variables
+    - Compute the sample mean and sample standard deviation
+- We can repeat a few times to see if our sample size is large enough so that random fluctuations are small enough.
+- We write a function to do this and then repeat a few times
+
+```{r}
+## simulate n uniform random variables
+## return the mean and sd in a data frame
+sim13 = function(n, min=0, max=10)
+{
+  x = runif(n, min, max)
+  df = tibble(mu = mean(x),
+              sigma = sd(x))
+  return ( df )
+}
+
+n = 10^6
+sim13(n)
+sim13(n)
+sim13(n)
+sim13(n)
+```
+
+- It seems that $n=10^6$ is large enough for our purposes.
+- Simulation is consistent with our guess that $\mu = 5$.
+- Out "about two-thirds" rule overestimated the standard deviation
+    - The uniform shape is symmetric, but not nearly bell-shaped
+    - Calculus allows us to determine that the exact variance is $\sigma^2 = 100/12$
+    - Thus, the standard deviation is $\sigma = \sqrt{12} \doteq `r round(10/sqrt(12),3)`$
+

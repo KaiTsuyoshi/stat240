@@ -1,0 +1,516 @@
+---
+title: "Getting Started with stringr"
+author: "Bret Larget"
+output: html_document
+##editor_options: 
+##  chunk_output_type: outline
+---
+
+This R Markdown document includes contributions from Professor Jessi Kehe. 
+
+### Setup details
+
+- You will need the packages **tidyverse** including **stringr** within.
+
+- Be sure to read *R4DS* Chapter 14 for information on **stringr** 
+
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      cache = TRUE, autodep = TRUE,
+                      cache.comments = FALSE)
+library(tidyverse)
+```
+
+
+## Strings and Regular Expressions
+
+## Overview
+
+- This lecture will give examples of working with strings and regular expressions.
+
+
+## Strings
+
+- A *string* is a sequence of characters.
+- In R, a string is surrounded by a pair of single quotes or double quotes.
+
+```{r}
+'a string'
+"another string"
+```
+
+### Quotes in strings
+
+- A string which contains quotes may be surrounded by the other type.
+
+```{r}
+"A 'string' that contains single quotes"
+'A "string" that contains double quotes'
+```
+
+- Alternatively, use a backslash (`\`) before a quote character, or any other special character.
+
+```{r}
+"A \"string\" using backslashes to \"escape\" the double quote characters."
+```
+
+### Common string functions
+
+- See the Cheat Sheet for a more extensive list.
+- All of the string functions begin `str_`.
+
+### Detect matches
+
+- A pattern is a string which holds a *regular expression* that can match strings with particular patterns
+- The simplest pattern is an exact match with the string
+- Later, we describe many ways to build regular expressions
+
+#### Example functions
+
+- `str_detect(string, pattern)` --- detect a pattern in a string
+- `str_count(string, pattern)` --- count the number of times a string contains a pattern
+
+### Subsets
+
+- A subset is part of the string
+- When selecting by position, positive numbers count from the beginning, negative count from th end.
+
+#### Example functions
+
+- `str_sub(string, start, end)` --- extract a subset by position
+- `str_extract(string, pattern)` --- extract first match of pattern, `NA` if no match
+
+### Length
+
+- The *length* of a string is the number of characters in it.
+
+#### Example functions
+
+- `str_length(string)` --- length of the string
+- `str_pad(string, width, side, pad = " ")` --- pad strings to a constant width
+
+### Mutate
+
+- Modify strings
+
+#### Example functions
+
+- `str_sub(string, start, end) = replacement_string` --- replace a subset by position
+- `str_replace(string, pattern, replacement)` --- replace first match with replacement
+- `str_to_lower(string)` --- change all letters to lower case
+- `str_to_upper(string)` --- change all letters to upper case
+
+### Join and split
+
+- Combine strings or divide them
+
+#### Example functions
+
+- `str_c(..., sep = "")` --- combine multiple strings into one
+- `str_split_n(string, pattern, n)` --- return the nth substring that matches the pattern
+
+## Regular Expressions
+
+- A *regular expression* is a sequence of characters that defines a pattern which may match a string or part of a string
+- Most characters match only their matching character:
+    - `a` matches only `a`, `A` matches only `A`
+    - `,` and `;` match the corresponding punctuation marks
+    - Usually, a digit such as `1` or `2` matches only the corresponding digit
+        - An exception is when preceded by a backslash, `\1`
+- There are many special characters that take on special meaning in a regular expression
+- When you want the literal special character, you need to precede it with a backslash, `\`.
+
+### Examples
+
+#### Alternates
+
+- `|` --- *or*, match exactly one of the possibilities: can separate more than two chocies
+- `[]` --- *one of*, match one of the characters between the brackets
+- `[^]`--- *anything but*, match anything *not* between `[^` and `]`
+- ranges --- examples: `[a-d]`, `[0-5]`, `[a-zA-Z]`
+
+#### Anchors
+
+- `^` --- the start of the string
+- `$` --- the end of the string
+
+#### Quantifiers
+
+- How often does the previous character/group need to appear?
+
+- `?` --- 0 or 1
+- `*` --- 0 or more
+- `+` --- 1 or more
+- `{n}` --- exactly `n` times
+- `{n,}` --- `n` or more
+- `{m,n}` --- form `m` to `n` times
+
+### Special collections
+
+- `[:space:]` --- space, tab, newline
+- `[:blank:]` --- space and tab
+- `[:punct:]` --- a collection of punctuation characters
+- `[:symbol:]` --- a collection of symbols
+- `[:digit:]` --- a digit
+- `[:lower:]` --- same as `[a-z]`, a lower-case letter
+- `[:upper:]` --- same as `[A-Z]`, an upper-case letter
+- `[:alpha:]` --- same as `[a-zA-Z]`, `[:lower:]|[:upper]`
+- `[:alnum:]` --- letter or number, `[:alpha:]|[:digit:]`
+- `[:graph:]` --- punctuation, symbols, digits, letters
+    - same as `[:punct:]|[:symbol:]|[:alnum:]`
+- `.` --- matches any single character except for a newline    
+    
+#### Others
+
+- See the cheat sheet for others:
+    - Peek ahead and behind
+    - Groups
+    
+## Regular expression representations in R
+
+- Each regular expression is represented as a string in R
+- Most regular expressions are simply the string of the regular with no changes
+    - the regular expression `abc+` is represented as the string `"abc+"`
+- However, regular expressions that include a backslash, `\`, need to duplicate the `\` in the string representation as `\` means something special inside a string.
+    - "\\n" is the new line character
+    - "\\t" is the tab character
+    - and there are more examples
+
+#### Examples
+
+- The regular expression `a+`, one or more consecutive `a`s has the string representation `"a+"`
+- The regular expression `a\+` for an `a` followed by a literal `+` has the string representation `"a\\+"`
+- The regular expression `\\` to match a literal `\` has the string representation `"\\\\"` as each `\` in the regular expression requires `\\` in the string representation.
+
+## Data
+
+- We create a simple data frame consisting of the built in names in R.
+    - `colors()` creates a vector of color names
+    - `seq_along()` creates a sequence from 1 to the length of the argument.
+
+```{r color-data}
+df_colors = tibble(
+  index = seq_along(colors()),
+  colors = colors())
+
+print(df_colors)
+```
+
+## Problems
+
+> Find the shortest and longest color names
+
+- It would be nice to have a function which returns the length of a string.
+- Consult the **stringr** cheat sheet:
+    - Aha! Use `str_length()` to find the length of each string  
+- Then use `slice_max()` or `slice_min()` to identify the extremes  
+
+```{r}
+
+```
+
+
+
+
+
+#### Solution
+
+```{r}
+## Add the string length
+df1 = df_colors %>%
+  mutate(length = str_length(colors))
+
+## Longest
+longest = df1 %>%
+  slice_max(n = 1, order_by = length)
+
+longest
+
+## Shortest
+shortest = df1 %>%
+  slice_min(n = 1, order_by = length)
+
+shortest
+```
+
+- The longest color name is `r longest$colors` with a length of `r longest$length` characters.  
+- The shortest color names are `r shortest$colors[1]` and `r shortest$colors[2]`, each with a length of `r shortest$length[1]`.
+
+> Make a bar plot of the string lengths
+
+- Note use of `scale_x_continuous()` to change the default breaks and labels in the plot.
+
+```{r length-plot}
+ggplot(df1, aes(x=length)) +
+  geom_bar(fill = longest$colors, color="black") +
+  xlab("Word Length") +
+  scale_x_continuous(labels = 3:20, breaks = 3:20) +
+  ggtitle("R Colors Name Length Distribution") +
+  theme_bw()
+```
+
+
+> Find the color names of length 8. Report the number, and the first and last color name (alphabetically).
+
+```{r}
+
+```
+
+
+
+
+
+
+
+#### Solution
+
+```{r length-8}
+df2 = df_colors %>%
+  filter(str_length(colors) == 8) %>% 
+  arrange(colors)
+
+df2 %>% 
+  summarize(n = n(),
+            first = min(colors),
+            last = max(colors))
+
+df2 %>% 
+  print(n = Inf)
+```
+
+> How many color names begin and end with the same letter? Report the number and the first and last alphabetically.
+
+```{r}
+
+```
+
+
+
+
+
+#### Solution 1
+
+- One approach is to create new variables with the first and last letters of each column and then filter for cases where these are the same.
+- Is there a function to grab part of a string? Check the cheat sheet:
+- Aha! There are several potentially useful functions.
+- `str_sub(string, start, end)` returns the sub string from `start` to `end`
+    - Use negatives to count from the end.
+    - Can also be used to assign values by position
+- `str_extract(string, pattern)` returns the first substring to match the regular expression encoded in `pattern`.
+    
+```{r}
+## Solution using str_sub()
+## Positive start and end count from the start
+## Negative count from the end
+df3a = df_colors %>%
+  mutate(first = str_sub(colors,1,1),
+         last = str_sub(colors,-1,-1)) %>%
+  filter(first == last)
+df3a
+
+df3a %>%
+  summarize(n=n(), first = min(colors), last = max(colors))
+```
+
+#### Solution 2
+
+- Next, use regular expressions and `str_extract()`.
+- Note the special characters:
+    - `^` matches the start of the string
+    - `$` matches the end of the string
+    - `.` matches any single character (except for end of line)
+
+```{r}
+## Solution using str_extract()
+df3b = df_colors %>% 
+  mutate(first = str_extract(colors, "^."),
+         last = str_extract(colors, ".$")) %>% 
+  filter(first == last)
+
+df3b
+
+df3b %>%
+  summarize(n=n(), first = min(colors), last = max(colors))
+```
+
+#### Solution 3
+
+- We could have accomplished the same thing without creating the extra columns
+- However, it can be helpful to create the columns to make sure the code is doing what you think it is doing
+
+```{r}
+df_colors %>% 
+  filter( str_extract(colors, "^.") == str_extract(colors, ".$") )
+```
+
+#### Solution 4
+
+- Another fancy solution uses the group operator, `()`.
+    - Each part of a regular expression surrounded by parentheses is saved and labeled for further use.
+        - The first part may be recalled with `\1`, the second with `\2`, and so on.
+        - When representing `\` in a regular expression as a string in R, recall it needs to be "escaped" with a leading `\`
+- We use `str_detect()` to detect when the color name matches a pattern where the first character is a letter that is also used as the last character.
+- Note the use of the special regular expression syntax `[:alpha:]` which matches letters of the alphabet.
+    - Alternatives are:
+        - `[:lower:]` or `[a-z]` for lowercase letters
+        - `[:upper:]` or `[A-Z]` for uppercase letters
+        - `[a-zA-Z]` for lowercase or uppercase letters
+- The character `.` matches any character.
+- The character `*` repeats the previous pattern 0 or more times.
+- Put all together, the regular expression `^([:alpha:]).*\1$` matches:
+    - a letter at the beginning of the string
+    - then any set of characters of length 0 or more
+    - followed by the same letter as at the start of the string at the end
+- We need to replace `\` with `\\` in the string representation of the regular expression.
+
+```{r}
+df3c = df_colors %>%
+  filter(str_detect(colors, "^([:alpha:]).*\\1$"))
+
+df3c
+```
+
+
+> Find all color names that begin with a letter from "aeiou" and end with a letter from "aeiouy". Modify so that the first letter is capitalized and the last two characters are each replaced by X.
+
+```{r}
+prob4 = df_colors %>% 
+  filter(str_detect(colors, "^[aeiou].*[aeiouy]$")) 
+
+prob4 = prob4 %>% 
+  mutate(colors = str_to_title(colors)) %>% 
+  mutate(colors = str_c(str_sub(colors, 1, -3), "XX")) 
+prob4
+```
+
+
+
+
+
+
+#### Solution
+
+- Regular expression special symbols:
+    - `^` is the beginning of the string
+    - `$` is the end of the string
+    - `.` is any character (except a newline)
+    - `*` means repeat 0 or more times
+    - `[...]` matches any character from between the `[` and the `]`
+- `str_c()` combines string arrays, element by element
+- `str_detect()` returns `TRUE` or `FALSE` that it detects the pattern in the string
+- `str_to_lower()` changes a string to lower case
+- `str_to_upper()` changes a string to upper case
+- `str_sub()` may also be used for assignment
+- See the cheat sheet for many more
+
+  
+```{r vowel}
+df4 = df_colors %>%
+  filter(str_detect(colors, "^[aeiou].*[aeiouy]$"))
+df4
+
+df4 = df4 %>%
+  mutate(new_colors = str_c(str_to_upper(str_sub(colors,1,1)), # capitalize first letter
+                            str_sub(colors,2,-3), #start and end points are inclusive
+                            "XX"))
+
+df4
+```
+
+
+
+> Find all colors names which begin with a vowel, end with a consonant, have no digits in the name, and have between 4 and 10 total characters
+
+```{r}
+prob5 = df_colors %>% 
+  filter(str_detect(colors, "^[aeiou][:alpha:]{2,8}[^aeiouy0-9]$"))
+
+prob5
+```
+
+
+
+
+
+
+#### Solution
+
+- Regular expression `[:digit:]` stands for a digit.
+    - Alternatives are `\d` or `[0-9]`
+- In an R string, need to double the `\` in order to represent the literal `\`.
+- A `^` right after `[` negates the matches between the `[` and the `]`
+- `{n}` repeats the previous pattern `n` times
+- `{m,n}` repeats the previous pattern from `m` to `n` times
+
+```{r}
+df5 = df_colors %>%
+  filter(!str_detect(colors,"[:digit:]")) %>% # no digit
+  filter(str_detect(colors, "^[aeiou].{2,8}[^aeiouy]$")) %>%
+  mutate(length = str_length(colors)) # added to check the length
+df5
+```
+
+
+
+> Find all color names that repeat a letter twice in a row.
+
+```{r}
+prob6 = df_colors %>% 
+  filter(str_detect(colors, "([:alpha:])\\1")) 
+
+prob6
+```
+
+
+
+
+
+
+
+#### Solution
+
+- Surrounding a pattern with `()` changes the order of preference and forms a group.
+- Whichever pattern matches a group may be referred to by `\x` where `x` is the number of the group
+    - For example, `([a-e])\1` will match double letters from a through e.
+    - But in a string in R, we need to precede `\` by another `\` to indicate we mean the literal `\`. So, `"([a-e])\\1"`
+    
+```{r}
+## Lecture
+df6 = df_colors %>%
+  filter(str_detect(colors, "([:alpha:])\\1"))
+
+df6
+```
+
+> Find all color names which contain the substrings "red", "blue", or "green"
+
+
+```{r}
+prob7 = df_colors %>% 
+  filter(str_detect(colors, "red|blue|green"))
+
+prob7
+```
+
+
+
+
+
+
+#### Solution
+
+- separate alternative patterns with a `|`
+
+```{r}
+## Lecture
+df7 = df_colors %>%
+  filter(str_detect(colors, "red|blue|green"))
+
+df7
+```
+
+
+
+
+

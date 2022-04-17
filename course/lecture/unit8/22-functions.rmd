@@ -1,0 +1,396 @@
+---
+title: "Writing Functions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      cache = TRUE, autodep = TRUE,
+                      cache.comments = FALSE)
+library(tidyverse)
+```
+
+- These notes teach you how to write functions using base R.
+
+- We have seen several previous examples in class, but these notes describe the process in more detail.
+
+- Note that writing functions to be compatible with **tidyverse** functions is substantially more difficult as **tidyverse** functions break many of the usual rules in R (such as refering to variable names without quotes).
+
+- See Chapter 19 in *R4DS* for more information on writing base R functions.
+
+## A Simple Example
+
+- Here is a very simple example of a function which returns the negative square root of the input.
+
+```{r}
+## define the function
+f = function(x)
+{
+  value = -sqrt(x)
+  value
+}
+```
+
+### Key Elements
+
+- Note the key elements:
+    - A name
+        - Here we used `f`. In general, you want an informative name that says what the function does
+    - Assignment
+    - The key word `function`
+    - A set of parentheses `(` and `)`
+    - Optionally, one or more arguments inside the parentheses
+    - A set of braces `{` and `}`
+        - These are optional if the function has only one statement, but it is generally good practice to always use them for code clarity
+    - By default, R returns the last object stated
+    - While not required, I like to use an explicit `return()` with the return value inside the parentheses.
+    
+```{r}
+## redefine f
+f = function(x)
+{
+  value = -sqrt(x)
+  
+  return ( value )
+}
+```
+
+- Note that when you execute the code to create the function, it appears in your environment
+    
+### Execute the Functions
+
+- Now let's run it with various input values.
+
+```{r}
+## A single positive number
+f(4)
+```
+
+
+```{r}
+## A vector of positive numbers
+f(1:5)
+```
+
+
+```{r}
+## A negative number
+## Runs, put produces a warning
+## Return value is `NaN`, not a number
+f(-4)
+```
+
+
+```{r, eval = FALSE}
+## A character-valued vector
+## This produces an error
+## Not run when knitting
+f(LETTERS[1:3])
+```
+
+## Choosing Names
+
+- While allowed, it is bad practice to use the name of an existing function as your function name.
+- The reason this is bad is that in R's precedence rules, any object names defined in your environment have highest priority.
+- So, for example, if you created a function named `sum()`, then your `sum()` function will be called instead of the base R function `sum()`, which will likely lead to unexpected and undesired results.
+
+## Arguments
+
+- Our example function had one argument, `x`
+
+```{r}
+f
+```
+
+- If we want to define a function with more than one argument, then give each argument a name and separate by commas
+- Here is a function that takes two numerical inputs, calculates the mean of each, and returns the difference
+
+```{r}
+mean_difference = function(x, y)
+{
+  return ( mean(x) - mean(y) )
+}
+```
+
+### Test it
+
+```{r}
+## Two values
+mean_difference(2, 4)
+
+## Two numerical vectors
+mean_difference(0:10, 20:40)
+
+## Calling by name
+## Notice the order can change
+mean_difference(y = 0:10, x = 20:40)
+```
+
+- But it is an error if only one argument is passed in
+
+```{r, eval = FALSE}
+## Not run when knitting
+## Causes an error
+mean_difference(1:10)
+
+## Another error
+mean_difference(y = 20:40)
+```
+
+## Default Values
+
+- We can set the default values of a function in its definition
+    - Set the argument to be equal to its default value
+    - The default value is used when called unless an alternative is passed in
+    
+```{r}
+## redefine mean_difference
+mean_difference = function(x, y=0)
+{
+  return ( mean(x) - mean(y) )
+}
+```
+
+- We get the same results as previously when passing in two arguments
+
+```{r}
+mean_difference(0:10, 20:40)
+```
+
+- But we can also pass in a single argument, read to be `x`
+
+```{r}
+mean_difference(0:10)
+```
+
+- However, if we call with only `y`, it is an error as `x` has no default value
+
+```{r, eval = FALSE}
+## Not run when knitting
+## Causes an error
+mean_difference(y = 0:10)
+```
+
+## Local Variables
+
+- Variables created in a function are *local*
+- Their scope is only within the function
+- A copy of the variables created within do not persist in the environment
+- This function creates a new variables named `n`, but it does not persist outside of the function
+
+```{r}
+## function to append the length of the vector to the vector
+## neither the input x nor the new variables n or y exist outside the function
+g = function(x)
+{
+  n = length(x)
+  y = c(x, n)
+  ## cat() writes to the console
+  ## "\n" is the newline character
+  cat("y: ", y, "\n")
+  cat("n: ", n, "\n")
+  return ( y )
+}
+```
+
+
+```{r, eval=FALSE}
+## Not run when knitting to avoid error
+g(1:5)
+
+x
+y
+n
+```
+
+## Checking Conditions
+
+- To avoid errors, you can write in lines to check input conditions
+- When writing code for broad use, it is wise to do so
+- When writing code for yourself for a specific task, you can (usually) trust yourself not to call the function with faulty input
+
+```{r}
+## redefine f()
+f = function(x)
+{
+  if ( !is.numeric(x) )
+    stop("Argument x must be numeric")
+  
+  value = -sqrt(x)
+  
+  return ( value )
+}
+```
+
+- The function `stop()` is a special base R function which stops execution of a function and returns an error message
+    - the error message is its argument
+
+- Test it
+
+```{r, eval = FALSE}
+## code chunk not evaluated when knitting to avoid error
+
+## valid input
+f(1:5)
+
+## invalid input
+f(LETTERS[1:3])
+```
+
+## Conditional Execution
+
+- The previous function used a conditional `if()` expression
+- The one-command action did not require braces
+- If we wanted to do two or more things, we would need braces
+
+```{r}
+## redefine f() again
+f = function(x)
+{
+  if ( !is.numeric(x) )
+  {
+    if ( is.character(x) )
+      message = "argument x was character-valued"
+    if ( is.logical(x) )
+      message = "argument x was logical-valued"
+    if ( any(x < 0) )
+      message = "at least one element of x was negative"
+    
+    stop(str_c("Argument x must be numeric and non-negative, ", message))
+  }
+  
+  return ( -sqrt(x) )
+}
+```
+
+- Run it with various inputs
+
+```{r, eval = FALSE}
+## Chunk not evaluated when knitting to avoid error
+
+## good input
+f(1:5)
+
+## negative value
+f(c(-1, 1:3))
+
+## character
+f(LETTERS[1:3])
+
+## logical
+f(TRUE)
+```
+
+## Return Values
+
+- While I like to always use `return()` when writing functions, it is not required.
+- It is very useful, however, in cases where there is a condition to check and one case is very simple and the other is very complicated.
+- Here is an example without using return
+
+```{r}
+g = function(x)
+{
+  if ( length(x) == 1 )
+  {
+    value = 1
+  }
+  else
+  {
+    ## long complicated code goes here
+    ## ...
+    value = 0 # (in practice, value computed in a complex calculation)
+  }
+  
+  value
+}
+```
+
+- Run it
+
+```{r}
+g(1)
+
+g(1:5)
+```
+
+- Most of the work had to be included in an `else` clause which makes the code harder to read and write
+- Here is the same function using an early return
+
+```{r}
+g = function(x)
+{
+  if ( length(x) == 1 )
+    return ( 1 )
+  
+  ## long complicated code goes here
+  ## ...
+  value = 0 # (in practice, value computed in a complex calculation)
+
+  return ( value )
+}
+```
+
+- Same output
+
+```{r}
+g(1)
+
+g(1:5)
+```
+
+## Invisible
+
+- When the output of a function is not saved, by default, the output is written to the console.
+- Here is a function that:
+    - takes a data frame as input
+    - counts the missing values
+    - writes this number to the console
+    - and returns the data frame
+- Using the `invisible()` function does not print the data frame to the console
+- However, even though it is not printed, it is returned and can be piped into another command, for example.
+
+
+
+```{r}
+report_na = function(df)
+{
+  n = sum(is.na(df))
+  cat("The data frame has ", n, " missing values.\n")
+  
+  return( invisible(df) )
+}
+```
+
+### Official Madison Weather Data
+
+```{r}
+official = read_csv("../../data/madison-weather-official-2020.csv")
+```
+
+- Note that the data is returned invisibly: it does not print
+
+```{r}
+report_na(official)
+```
+
+- But, the data frame is returned
+
+```{r}
+out = report_na(official)
+class(out)
+dim(out)
+```
+
+```{r}
+official %>% 
+  report_na() %>% 
+  drop_na() %>% 
+  report_na()
+```
+
+## Moving On
+
+- As we move into the statistical modeling and inference portion of the course, we will continue to write functions to simplify code, reduce repetition, and make our programs easier to read and maintain.
+
+
+

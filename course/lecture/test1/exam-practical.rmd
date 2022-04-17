@@ -1,0 +1,263 @@
+---
+title: "240 Midterm - practical part"
+documentclass: article
+classoption: letterpaper
+output:
+  html_document:
+  highlight: tango
+---
+
+<style>
+h1{margin-top:30px}
+h2{margin-top:30px}
+h3{margin-top:30px}
+blockquote{margin-top:30px}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, cache=TRUE, autodep=TRUE, 
+                      cache.comments=FALSE, message=F, warning=F)
+
+library(tidyverse)
+library(lubridate)
+source("../../scripts/viridis.R")
+```
+
+The practical exam has five problems from the *Friends* data.
+We will revisit the earthquake data later in the course.
+There are five total questions worth 50 points.
+
+You have two hours to complete the exam.
+Make sure to allow time to knit and upload.
+It is advisable to knit as you progress to ensure you do not have problems.
+
+## Problem 1 (4 points)
+
+The *Friends* data as you read it in as these columns:
+
+- `text`: an "utterance" of words, typically spoken by one character before the next speaker begins speaking, with a few exceptions.
+- `speaker`: the character who is speaking
+    - Rows where `speaker` is "Scene Directions" do not contain dialogue, but instead describe non-verbal scene activity.
+- `season`, `episode`, `scene`, `utterance`: seasons consist of multiple episodes; each episode consists of multiple scenes; and each scene has a sequence of utterances.
+
+**Do the following:**
+
+1. Import the data.
+2. Use code to report the dimensions.
+3. Eliminate rows where the `speaker` has the value "Scene Directions" and remove the `episode`, `scene`, and `utterance` columns.
+4. Report the dimensions again.
+
+```{r}
+friends_orig <- read_csv("../../data/friends.csv")
+
+dim(friends_orig)
+
+friends = friends_orig %>% 
+  filter(speaker != "Scene Directions") %>% 
+  select(-episode, -scene, -utterance) 
+
+dim(friends)
+```
+
+
+## Problem 2 (12 points)
+
+A. Continuing with the data set from the previous problem:
+
+1. Create a summary table with the twenty speakers who speak most frequently and the counts of their utterances, arranged from the highest to lowest values.
+
+2. Print the full table.
+(This table should have two variables, `speaker` and `n`.)
+
+The first six speakers in the arranged table are the primary characters of the show.
+Note that #7 on the list is `#ALL#`, used when all characters present say an utterance together.
+
+```{r}
+speaker_count = friends %>% 
+  select(speaker) %>% 
+  group_by(speaker) %>% 
+  summarize(n = n()) %>% 
+  arrange(desc(n))
+
+
+head(speaker_count, 20)
+```
+
+B. The actor James Michael Tyler, who played Gunther on the show.
+died on October 24, 2021.
+He is sometimes referred to as the "7th friend" due to his frequent appearances on the show.
+(He appeared in more episodes than any character other than the six main characters.)
+Where does Gunther appear on the list of most common speakers?
+
+He shows up as the 18th most common speaker
+
+C. Create a vector with the names of the main characters.
+
+1. Use code to create a vector named `main_characters` with the six main characters names by pulling the speaker names from this summary table.
+You will use this vector in the next two problems.
+
+2. Print the vector with the character names.
+
+
+```{r}
+main_characters = pull(head(speaker_count, 6), 1)
+  
+
+print(main_characters)
+```
+
+
+
+## Problem 3 (8 points)
+
+1. Add a column named `main` to the `friends` data set from Problem 1 (you already removed scene directions) with the name of the speaker if the speaker is one of the six main characters and the value "Other" otherwise.
+
+2. Calculate the proportion of all utterances spoken by each of the seven possible character labels (one of the six main characters or Other) and add these values in a column named `p`.
+
+3. Arrange the rows from highest to lowest proportion.
+
+4. Report this data in a table with seven rows and columns for `speaker`, the count of utterances `n`, and the proportion `p`.
+
+```{r}
+main_fr = friends %>% 
+  mutate(speaker = case_when(!speaker %in% main_characters ~ "Other",
+                          speaker == "Rachel Green" ~ "Rachel Green",
+                          speaker == "Ross Geller" ~ "Ross Geller",
+                          speaker == "Chandler Bing" ~ "Chandler Bing",
+                          speaker == "Monica Geller" ~ "Monica Geller",
+                          speaker == "Joey Tribbiani" ~ "Joey Tribbiani",
+                          speaker == "Phoebe Buffay" ~ "Phoebe Buffay",)) %>% 
+  group_by(speaker) %>% 
+  summarize(tot = nrow(friends), n = n(), p = n / tot) %>% 
+  select(speaker, n, p) %>% 
+  arrange(desc(p))
+main_fr                
+```
+
+
+## Problem 4 (12 points)
+
+Using the `friends` data set as modified in Problem 1:
+
+1. Eliminate rows to keep only utterances by the six main characters.
+
+2. Create a table that counts the number of utterances by each character and season.
+
+3. Visualize these counts using a bar plot:
+
+- with main character on the x axis;
+- using a different fill color for each character; and
+- a different facet for each season
+
+You may add the layer in the R chunk below to your code for making the plot in order to eliminate the character names from the x axis tick labels and thus avoid overlapping labels.
+(The colors distinguish between the characters and legend will identify the characters.)
+
+```{r}
+fr_data = friends %>% 
+  filter(speaker %in% main_characters) %>% 
+  group_by(season, speaker) %>% 
+  summarize(n = n())
+  
+ggplot(fr_data, aes(x = speaker, y = n, fill = speaker)) +
+  geom_col() +
+  scale_x_discrete(label = NULL) +
+  facet_wrap(~ season) +
+  ggtitle("Number of Utterances Each Season")
+```
+
+
+## Problem 5 (14 points)
+
+Let's do something interesting with the text. Specifically, let's find out how many times characters refer to each other.
+
+The next chunk of code creates six new *character counting columns*
+named after the six main characters' first names.
+Each column records the number of times that character's name appears in the text (i.e. how many times that name was said).
+
+For example, in the third utterance of the series, Chandler Bing is the speaker and says,
+
+> All right Joey, be nice. So does he have a hump? A hump and a hairpiece?
+
+In the corresponding row of this modified data set, the column `joey.` has the value `1` as Chandler mentions Joey's name, and the other character counting columns have value `0`.
+Rows will have all zeros in the character counting columns if no main character's name was spoken.
+
+```{r}
+prob5 = friends %>% 
+  filter(speaker %in% main_characters) %>% 
+  mutate(ross. = str_count(text,"(?i)ross"),
+         monica. = str_count(text,"(?i)monica"),
+         rachel. = str_count(text,"(?i)rachel"),
+         chandler. = str_count(text,"(?i)chandler"),
+         phoebe. = str_count(text,"(?i)phoebe"),
+         joey. = str_count(text,"(?i)joey")) %>% 
+  select(season, speaker, contains("."))
+
+head(prob5)
+```
+
+A. What does the regular expression `"(?i)"` do?
+
+Indicates case insensitive match
+
+B. Reshape the data in `prob5` into a long format:
+
+- with one long column named `n` with the counts character counting columns
+- with another column `name` with these column names
+- retaining the columns named `season` and `speaker`.
+
+```{r}
+reshaped = prob5 %>% 
+  pivot_longer(cols = ross.:joey.,
+               names_to = "name",
+               values_to = "n")
+```
+
+
+If done properly, this data frame should look like what is below,
+and have over 300,000 rows as the data in each row in `prob5` has been split into six.
+
+```
+       season speaker       name          n
+        <int> <chr>         <chr>     <int>
+     1      1 Monica Geller ross.         0
+     2      1 Monica Geller monica.       0
+     3      1 Monica Geller rachel.       0
+     4      1 Monica Geller chandler.     0
+     5      1 Monica Geller phoebe.       0
+     6      1 Monica Geller joey.         0
+...
+306281     10 Chandler Bing phoebe.       0
+306282     10 Chandler Bing joey.         0
+```
+
+C. Then summarize this data table into a much smaller table where each `speaker` and `name` appear with a count `n` of the total number of times that the speaker referred to each character by name during the full series.
+This smaller table should have one row for each `speaker/name` pair.
+Piping this summary table into the provided command will rename the values of the `name` column to be the capitalized first name of the main character.
+
+```{r}
+smaller = reshaped %>%
+  group_by(speaker, name) %>% 
+  summarize(n = n()) %>%  
+  mutate(name = str_to_title(str_sub(name, 1, -2)))
+```
+
+
+D. Make a bar plot with:
+
+- a different facet for each speaker
+- a different `x` value and fill color for each `name`
+
+in order to display how often each main character refers to the others. You may again remove the names of the characters from the x axis to eliminate overlapping labels.
+
+```{r}
+ggplot(smaller, aes(x = name, y = n, fill = name)) +
+  geom_col() +
+  scale_x_discrete(label = NULL) +
+  facet_wrap(~ speaker) +
+  ggtitle("Times Characters Referenced Others")
+```
+
+Which character refers to another character A LOT?
+
+Chandler to Rachel
+

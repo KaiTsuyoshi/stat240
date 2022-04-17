@@ -1,0 +1,19 @@
+unnamed-chunk-1	%>%	as.data.frame	mean	rbinom	sd	summarize	tibble	var	x
+unnamed-chunk-2	..density..	aes	binomial_example	geom_histogram	ggplot	ggtitle	theme_minimal	x	ylab
+unnamed-chunk-3	%>%	aes	binomial_example	count	geom_hline	geom_segment	ggplot	ggtitle	mutate	n	p	sum	theme_minimal	ungroup	x	ylab
+binomial-graphs	%>%	^	~	c	expand_grid	ggarrange	length	pmap	seq
+binomial-calc	^	choose	dbinom	factorial
+rbinom	mean	rbinom	var
+dbinom	dbinom	n	p
+dbinom-plot	gbinom	n	p
+pbinom	dbinom	n	p	pbinom
+qbinom	dbinom	n	p	qbinom
+unnamed-chunk-4	c	gbinom	geom_vline	sqrt	theme_minimal
+unnamed-chunk-5	dbinom	mu	n	p
+unnamed-chunk-6	c	dbinom	mu	n	p	pbinom	sigma	sum
+unnamed-chunk-7	c	n	p	pbinom	qbinom
+unnamed-chunk-8	aes	geom_line	ggplot	n	q75	qbinom	tibble
+unnamed-chunk-9	%>%	aes	geom_line	geom_smooth	ggplot	mu	mutate	n	q75	sigma	sqrt	z
+unnamed-chunk-10	%>%	mean	prob7	summarize	z
+unnamed-chunk-11	aes	dbinom	geom_line	ggplot	n	prob	seq	tibble
+unnamed-chunk-12	aes	c	geom_line	ggplot	n	prob	prob8	scale_x_continuous	scale_y_continuous

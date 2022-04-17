@@ -1,0 +1,73 @@
+---
+title: "Test Prep"
+author: "Kai Tsuyoshi"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+## Libraries you'll need to load
+library(tidyverse)
+library(lubridate)
+library(tidyr)
+library(readr)
+library(ggplot2)
+```
+
+
+```{r}
+police <- read_csv("../../data/police_incident_reports.csv")
+nfl_data <- read_csv("../../data/nfl-passing-2019-weeks-1-6.csv")
+```
+
+```{r}
+police_robb = police %>% 
+  filter(IncidentType == "Robbery") %>% 
+  select(IncidentDate)
+
+ggplot(police_robb, aes(x = IncidentDate)) +
+  geom_boxplot()
+```
+
+```{r}
+nfl = nfl_data %>% 
+  separate(Player, into= c("Name","NameID"), sep="\\\\")
+```
+
+```{r}
+police %>% 
+  mutate(wday = wday(IncidentDate, label=TRUE)) %>%
+  filter(IncidentType == "Robbery") %>%
+  ggplot(aes(x=wday)) +
+  geom_bar() +
+  xlab("Day of Week") +
+  ylab("Count") +
+  ggtitle("Robberies across Days of the Week")
+```
+
+```{r}
+nf19 = nfl %>% 
+  filter(Week == 1) %>%
+  select(Name,Age,Date) %>% 
+  ##A: Filters for all results that are 1 in the Week variable and picks out the name, age, and date of the game
+  ## convert=TRUE means the new variables are numbers and not strings
+  separate(Age, into = c("age_years","age_days"), convert=TRUE) %>%
+  mutate(d = Date - age_days) %>% 
+  ##B: Separates Age variable into full years and days into the current year, and subtracting each resulting day from the      date of the game to find the birthday of each player in that year
+  mutate(s = str_c(year(d) - age_years,"-",month(d),"-",day(d))) %>%  ## resulting in date of birth of players: yyyy-d-m
+  mutate(x = ymd(s)) %>% ## fixes back to yyyy-dd-mm format
+  select(Name,x) ## picks out each player and accompanying date of birth
+
+nf19
+```
+
+```{r}
+quakes <- read_csv("../../data/quakes.csv")
+friends <- read_csv("../../data/friends.csv")
+```
+
+```{r}
+
+```
+

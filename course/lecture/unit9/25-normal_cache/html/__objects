@@ -1,0 +1,14 @@
+normal-density	mu	mu2	sigma	sigma2
+unnamed-chunk-1	
+unnamed-chunk-2	
+unnamed-chunk-3	
+unnamed-chunk-4	
+unnamed-chunk-5	
+unnamed-chunk-6	mu	sigma	x	z
+unnamed-chunk-7	mu	p	sigma
+unnamed-chunk-8	normal_plots
+simple-normal	
+normal-approx-good	mu	n	p	sigma
+normal-approx-good-graphs	df
+normal-approx-bad	mu	n	p	sigma
+normal-approx-bad-graphs	df

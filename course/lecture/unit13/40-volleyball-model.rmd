@@ -1,0 +1,488 @@
+---
+title: "Volleyball and Modeling (continued)"
+output:
+  html_document: default
+---
+
+\newcommand{\given}{\,|\,}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(tidymodels)
+library(kableExtra)
+source("../../scripts/viridis.R")
+source("../../scripts/ggprob.R")
+```
+
+```{r default-theme, include=FALSE, eval=TRUE}
+## reset default theme
+theme_set(theme_bw())
+```
+
+### Volleyball Review
+
+- There are 340 NCAA Division I Women's volleyball teams
+- 64 teams made the NCAA tournament
+- Wisconsin, the Big 10 champion, is one of these 64
+- Wisconsin won their first four matches in the tournament versus Colgate, Florida Gulf Coast, UCLA, and Minnesota
+- Wisconsin is in the Final Four and plays #1 seed and undefeated Louisville next
+- The other semi-final has Nebraska, who knocked off #2 Texas, versus Pittsburgh.
+- The [full bracket](https://www.ncaa.com/brackets/volleyball-women/d1/2021) is available on the NCAA web site.
+
+#### Rules
+
+- The winner of a volleyball match is the first to win three sets
+- The winner of a set is the first to score the target or higher with a lead of at least two
+- Sets 1--4 have a target of 25, a set 5 if needed has a target of 15.
+- Each set is a series of rallies where one of the two teams wins a point.
+
+#### Modeling Review
+
+- We model each volleyball match as a series of binomial trials with the same probability that a given team wins the point versus the other team.
+- Probabilities are based on a logistic regression model to predict the probability of winning a point based on the difference is strengths between the two teams.
+- The parameters are:
+    - $\theta_i$, the strength of team $i$ for teams $i = 1, \ldots, m$
+    - A constraint is that $\sum_{i=1}^m \theta_i = 0$
+    - $\alpha$, the added benefit for a home team
+- The data is:
+    - $x_k$ is the number of points won by the first team in match $k$
+    - $y_k$ is the number of points won by the second team in match $k$
+- The probability that team 1 wins match $k$ is
+$$
+p_k = \frac{1}{1 + \exp(\theta_{1[k]} - \theta_{2[k]} + \alpha_k)}
+$$
+- where:
+    - $\theta_{1[k]}$ is the strength of team 1 in match $k$
+    - $\theta_{2[k]}$ is the strength of team 2 in match $k$
+    - $\alpha_k$ is the home field advantage is match $k$
+        - $\alpha_k = \alpha$ if team 1 is the home team
+        - $\alpha_k = -\alpha$ if team 2 is the home team
+        - $\alpha_k = 0$ if neither team is the home team
+- The log likelihood is the sum of log-likelihoods over all matches
+
+$$
+\ln L = \sum_{k=1}^n (x_k \ln p_k + y_k \ln (1-p_k))
+$$
+
+#### Inverse Logistic Function
+
+- The key formula in the model is the *inverse logistic function* which takes an argument between $-\infty and \infty$ and returns a probability between $0$ and $1$.
+    - The s-shaped function is increasing from a value of 0 at $-\infty$ and 1 at $\infty$.
+    - The function rises from close to zero to close to one between $-5$ and $5$ as seen in this graph.
+    
+```{r logistic-curve, cho = FALSE, fig.height = 2}
+inv_logistic = function(x) { return ( 1/(1 + exp(-x)) )}
+delta = seq(-5,5,length.out=1001)
+p = inv_logistic(delta)
+df = tibble(delta,p)
+
+ggplot(df, aes(x=delta,y=p)) +
+  geom_line(color="blue") +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 1, color="red", linetype = "dashed")
+```  
+    
+    
+### Data
+
+- Data for all NCAA Division I volleyball matches is found on [the NCAA website](https://stats.ncaa.org/season_divisions/17720/scoreboards?utf8=%E2%9C%93&season_division_id=&game_date=12%2F09%2F2021&conference_id=0&tournament_id=&commit=Submit)
+- There is a separate URL to produce a table with results for each date.
+- I scraped the data and created a file with one row per match between Division I team
+- The code block below reads in this data and eliminates matches from the national tournaments.
+
+```{r}
+vb_orig = read_csv("../../data/vb-division1-2021-all-matches-corrected.csv")
+
+vb_all = vb_orig %>% 
+  mutate(site = case_when(
+    str_detect(site, "NCAA DI Volleyball Championship") ~ "NCAA DI",
+    str_detect(site, "National Volleyball Invitational Championship") ~ "NCAA Invitational",
+    TRUE ~ site))
+
+vb = vb_all %>% 
+  filter(is.na(site) |
+           (!str_detect(site, "NCAA Invitational") &
+               !str_detect(site, "NCAA DI")))
+
+vb_ncaa = vb_all %>% 
+  filter(site == "NCAA DI")
+
+n_matches = nrow(vb)
+
+teams_orig = read_csv("../../data/vb-division1-2021-teams.csv")
+
+teams = teams_orig %>% 
+  select(Team) %>% 
+  mutate(team_index = row_number()) %>% 
+  relocate(team_index)
+
+conferences = teams_orig %>% 
+  select(Team, Conference) %>% 
+  mutate(team_index = row_number()) %>% 
+  relocate(team_index)
+
+n_teams = nrow(teams)
+
+seeds = read_csv("../../data/vb-division1-2021-ncaa-seeds.csv")
+```
+
+- The (mostly) cleaned data set has `r n_matches` matches involving only these `r n_teams` division I teams from the regular season or conference tournaments.
+
+
+### Data Set-up
+
+- To wrangle the data in order to fit the model, we need to add index variables for each team.
+- We also want to replace the scores over sets with the total number of points that each team scores.
+- This block of code accomplishes this.
+- We do this for the matches before the national tournament and those in the tournament
+
+```{r data}
+## all games
+total_points_all = vb_all %>%
+  mutate(x = s1_1 + s1_2 + s1_3 + 
+           if_else(is.na(s1_4), 0, s1_4) +
+           if_else(is.na(s1_5), 0, s1_5),
+         y = s2_1 + s2_2 + s2_3 + 
+           if_else(is.na(s2_4), 0, s2_4) +
+           if_else(is.na(s2_5), 0, s2_5),
+         home = as.integer(is.na(site))) %>%
+  left_join(teams, by = c("team1" = "Team")) %>% 
+  rename(index_1 = team_index) %>% 
+  left_join(teams, by = c("team2" = "Team")) %>% 
+  rename(index_2 = team_index) %>% 
+  select(index, index_1, team1, conference1, index_2, team2, conference2, winner, loser, x, y, home, site)  
+
+## all games before the national tournaments
+total_points = total_points_all %>% 
+  filter(is.na(site) |
+           (!str_detect(site, "NCAA Invitational") &
+               !str_detect(site, "NCAA DI")))
+
+## games so far in the national tournament
+total_points_ncaa = total_points_all %>% 
+  filter(str_detect(site, "NCAA DI"))
+
+## games including the national tournament
+tp = bind_rows(total_points, total_points_ncaa)
+```
+
+### Maximum Likelihood
+
+- This model includes a strength parameter $\theta_i$ for each team constrained so that $\sum_{i=1}^n \theta_i = 0$ and a single parameter $\alpha$ which is the home court advantage for a team if there is one team is the home team.
+- This code uses the function `optim()` to maximize the parameters.
+
+#### Code to fit the ML Model
+
+```{r mle}
+inv_logistic = function(x) { return ( 1/(1 + exp(-x)) ) }
+
+calc_logl = function(theta, alpha, df)
+{
+  delta = theta[df$index_1] - theta[df$index_2] - alpha*df$home
+  p = inv_logistic(delta)
+  return ( sum( df$x*log(p) + df$y*log(1-p)) )
+}
+
+f = function(alpha_theta, df)
+{
+  alpha = alpha_theta[1]
+  theta = c(alpha_theta[-1], -sum(alpha_theta[-1]))
+  return ( calc_logl(theta, alpha, df) )
+}
+
+ 
+fit_ml_model = function(df)
+{
+  n_teams = df %>% 
+    pull(index_1) %>% 
+    max()
+  theta_0 = rep(0, n_teams)
+  out = optim(theta_0, f, method="BFGS",
+            control = list(fnscale=-1),
+            df = df)
+  
+  return ( out )
+  
+}
+```
+
+#### Fit the Model
+
+```{r}
+out = fit_ml_model(total_points)
+
+alpha = out$par[1]
+theta = c(out$par[-1], -sum(out$par[-1]))
+teams = teams %>%
+  mutate(theta = theta) %>% 
+  left_join(conferences) %>% 
+  relocate(Conference, .after = Team)
+```
+
+#### Output
+
+```{r explore}
+ranked_teams = teams %>%
+  arrange(desc(theta)) %>%
+  mutate(rank = row_number()) %>%
+  left_join(seeds) %>% 
+  relocate(rank, team_index) %>% 
+  mutate(Conference = reorder(Conference, theta))
+```
+
+```{r}
+ranked_teams %>% print(n=20)
+```
+
+#### Seed versus Rank
+
+- The model's 15 strongest teams were all seeded, but the order of seeding differs from the model ranks.
+- Creighton is the only seeded team the model does not include among the top 16 (they are ranked at #20).
+- Wisconsin is ranked third, but is the #4 seed.
+- The model and seeding agree on the top two teams, but in different order.
+- #14 seed Creighton is ranked #20 by the model, but has an estimated $\theta = 0.37$ compared to $0.40$ for the models 16th best team, Penn State.
+
+#### Theta Values of Seeded Teams
+
+```{r}
+ranked_teams %>% 
+  filter(!is.na(Seed)) %>% 
+ggplot(aes(x = Seed, y = theta)) +
+  geom_col(color = "black", fill = "red")
+
+
+ranked_teams %>% 
+  filter(!is.na(Seed)) %>% 
+  arrange(Seed) %>% 
+  select(Team, Conference, theta, Seed, rank)
+```
+
+#### Wisconsin Tournament Opponents
+
+```{r}
+## Teams Wisconsin has beaten
+ranked_teams %>%
+  filter(Team %in% c("Wisconsin", "Colgate", "FGCU", "UCLA", "Minnesota")) %>% 
+  arrange(desc(theta))
+
+## Teams Wisconsin Might Play in the Final Four
+ranked_teams %>%
+  filter(Team %in% c("Wisconsin", "Louisville", "Nebraska", "Pittsburgh")) %>% 
+  arrange(desc(theta))
+```
+
+## Compare Results with the Data
+
+- For the 60 NCAA matches which have occurred, compare the actual proportions of points won with what the model predicts
+
+```{r}
+ncaa = total_points_ncaa %>% 
+  select(team1, team2, winner, loser, index_1, index_2, x, y) %>% 
+  mutate(theta_1 = theta[index_1],
+         theta_2 = theta[index_2],
+         p_model = inv_logistic(theta_1 - theta_2),
+         p_observed = x/(x+y)) %>% 
+  select(-index_1, -index_2)
+```
+
+```{r, include = FALSE}
+caption_string = "**NCAA Results**. Each points represents one of the matches of the 2021 NCAA Division I Volleyball Tournament. The value on the x axis is the probability that one team wins a point as predicted by the model. The value on the y axis is the observed proportion of points won by this team. The blue line is a fitted regression line. The red line is y = x."
+```
+
+```{r, fig.cap = caption_string}
+ggplot(ncaa, aes(x = p_model, y = p_observed)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  geom_point() +
+  xlab("Modelled Team 1 Point Probability") +
+  ylab("Observed Team 1 Point Proportion") +
+  ggtitle("NCAA Tournament Model versus Results")
+```
+
+- There is reasonable agreement between the model's predictions about the probability that the first team will win a point and the observed proportion.
+- The first team listed is the underdog by the tournament seeding.
+
+### Simulation
+
+- We next explore simulation to calculate the probability of winning a match
+- For any two teams, the model produces an estimate of the probability that each team wins a point
+- By simulation, we determine the probability that each team wins the match.
+
+```{r simulation, include = FALSE}
+inv_logistic = function(x) { return ( 1/(1 + exp(-x)) )}
+
+## simulate a single set to the target score of 25 or 15
+sim_set = function(delta,target)
+{
+  p = inv_logistic(delta)
+  points = c(0,0)
+  repeat
+  {
+    pt = rbinom(1,1,p)
+    if ( pt == 1 )
+      points[1] = points[1] + 1
+    else
+      points[2] = points[2] + 1
+    if ( max(points) >= target && abs(diff(points)) >= 2 )
+      break
+  }
+  return ( points )
+}
+
+## simulate a match by simulating the sets
+sim_match = function(delta)
+{
+  tab = matrix(NA,2,5)
+  sets = c(0,0)
+  index = 1
+  repeat
+  {
+    if ( sum(sets) < 4 )
+      result = sim_set(delta,25)
+    else
+      result = sim_set(delta,15)
+    if ( result[1] > result[2] )
+      sets[1] = sets[1] + 1
+    else
+      sets[2] = sets[2] + 1
+    tab[,index] = result
+    index = index + 1
+    if ( max(sets == 3) )
+      break
+  }
+  return ( tab )
+}
+
+sim_matches = function(delta=0.5, N = 1000)
+{
+  result = rep(0,N)
+  team1_pts = rep(0,N)
+  team2_pts = rep(0,N)
+
+  for ( i in 1:N)
+  {
+    m = sim_match(delta)
+    result[i] = ( sum(m[1,] > m[2,],na.rm=TRUE) == 3 )
+    team1_pts = sum(m[1,],na.rm=TRUE)
+    team2_pts = sum(m[2,],na.rm=TRUE)
+  }
+  
+  return ( mean(result) )
+}
+```
+
+### 1000 Simulates of each NCAA match
+
+```{r}
+set.seed(20211213)
+delta = (ncaa %>% pull(theta_1)) - 
+  (ncaa %>% pull(theta_2))
+
+ncaa_match_prob = map_dbl(delta, sim_matches)
+```
+
+### Store results 
+
+```{r}
+ncaa = ncaa %>% 
+  mutate(model_prob = ncaa_match_prob,
+         winner_prob = case_when(
+           team1 == winner ~ model_prob,
+           TRUE ~ 1 - model_prob))
+
+## Plot the results
+ggplot(ncaa, aes(x = winner_prob)) +
+  geom_histogram(boundary = 0.5, binwidth = 0.05,
+                 color = "black", fill = "skyblue") +
+  xlab("Model Probability of Winning the Match") +
+  ylab("# of Matches") +
+  ggtitle("2021 NCAA DI Volleyball")
+```
+
+```{r}
+ncaa %>% 
+  select(winner, loser, winner_prob) %>% 
+  arrange(winner_prob) %>% 
+  print(n = Inf)
+```
+
+- There were 10 upsets from the first 60 matches, by the model
+
+### Results of Matches from Seeded Teams
+
+```{r}
+ncaa = ncaa %>% 
+  left_join(seeds, by = c("winner" = "Team")) %>% 
+  rename(winner_seed = Seed) %>% 
+  left_join(seeds, by = c("loser" = "Team")) %>% 
+  rename(loser_seed = Seed)
+
+ncaa_seeded = ncaa %>% 
+  filter(!is.na(winner_seed) | !is.na(loser_seed)) %>% 
+  select(winner_seed, winner, loser_seed, loser, winner_prob)
+
+ncaa_seeded %>% 
+  print(n = Inf)
+
+ncaa_seeded %>% 
+  filter(!is.na(loser_seed))
+```
+
+- In the second round matches involving seeded teams, the only upset was Creighton losing to Kansas.
+- The model had this as a large upset, giving Kansas only a 15.5% chance of winning, but Creighton is the only seeded team that the model said was undeserving to be seeded.
+- Penn State, which the model would have seeded, lost to #3 seed Pittsburgh in the second round.
+
+### Predictions for the Final Four
+
+#### Wisconsin versus Louisville
+
+```{r}
+wi_theta = ranked_teams %>% 
+  filter(Team == "Wisconsin") %>% 
+  pull(theta)
+
+wi_theta
+
+louisville_theta = ranked_teams %>% 
+  filter(Team == "Louisville") %>% 
+  pull(theta)
+
+louisville_theta
+
+delta = wi_theta - louisville_theta 
+
+inv_logistic(delta)
+
+sim_match(delta)
+
+sim_matches(delta, N = 10000)
+```
+
+
+#### Pittsburgh versus Nebraska
+
+```{r}
+pitt_theta = ranked_teams %>% 
+  filter(Team == "Pittsburgh") %>% 
+  pull(theta)
+
+pitt_theta
+
+neb_theta = ranked_teams %>% 
+  filter(Team == "Nebraska") %>% 
+  pull(theta)
+
+neb_theta
+
+delta = pitt_theta - neb_theta 
+
+inv_logistic(delta)
+
+sim_match(delta)
+
+sim_matches(delta, N = 10000)
+```

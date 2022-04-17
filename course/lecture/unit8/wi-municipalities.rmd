@@ -1,0 +1,107 @@
+---
+output: html_document
+geometry: margin=0.75in
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message=FALSE,
+                      warning=FALSE,
+                      cache = FALSE)
+library(tidyverse)
+library(rvest)
+```
+
+## Wisconsin Counties
+
+```{r}
+url = "https://en.wikipedia.org/wiki/List_of_counties_in_Wisconsin"
+counties = read_html(url) %>% 
+  html_nodes("table") %>% 
+  pluck(2) %>% 
+  html_table() %>% 
+  select(starts_with("County")) %>% 
+  rename(county = County,
+         seat = contains("Seat")) %>% 
+  mutate(county = str_replace(county, " County$", ""))
+
+county_string = str_c(counties$county, collapse = "|")
+```
+
+### Wisconsin Cities
+
+```{r}
+url = "https://en.wikipedia.org/wiki/List_of_cities_in_Wisconsin"
+cities = read_html(url) %>% 
+  html_nodes("table") %>% 
+  pluck(2) %>% 
+  html_table() %>% 
+  select(-contains("2000")) %>% 
+  rename(
+    name = City,
+    county = `County(ies)`,
+    population = contains("2010"),
+    class = Class,
+    incorporation_year = contains("[2]")) %>% 
+  mutate(population = parse_number(population)) %>% 
+  mutate(county = case_when(
+    str_detect(county, str_c("^(",county_string,")$")) ~ county,
+    TRUE ~ str_replace_all(county, str_c("(",county_string,")(?!$)"), "\\1,"))) %>% 
+  mutate(type = "City") %>% 
+  select(type, everything())
+```
+
+### Wisconsin Villages
+
+```{r}
+url = "https://en.wikipedia.org/wiki/List_of_villages_in_Wisconsin"
+villages = read_html(url) %>% 
+  html_nodes("table") %>% 
+  pluck(2) %>% 
+  html_table() %>% 
+  rename(
+    name = Village,
+    county = `County(ies)`,
+    incorporation_year = contains("[2]")) %>% 
+  mutate(county = str_replace(county, " County$", "")) %>% 
+  mutate(population = case_when(
+    `Population(2010 Census)` != "" ~ parse_number(`Population(2010 Census)`),
+    TRUE ~ parse_number(`Population(2000 Census)`))) %>% 
+  mutate(county = case_when(
+    str_detect(county, str_c("^(",county_string,")$")) ~ county,
+    TRUE ~ str_replace_all(county, str_c("(",county_string,")(?!$)"), "\\1,"))) %>% 
+  select(-contains("Census")) %>% 
+  mutate(type = "Village") %>% 
+  select(type, everything()) %>% 
+  mutate(incorporation_year = as.numeric(str_remove(incorporation_year,"\\[.*\\]"))) %>% 
+  drop_na(population)
+```
+
+### Wisconsin Towns
+
+```{r}
+url = "https://en.wikipedia.org/wiki/List_of_towns_in_Wisconsin"
+towns = read_html(url) %>% 
+  html_nodes("table") %>% 
+  pluck(1) %>% 
+  html_table() %>% 
+  mutate(population = case_when(
+    `Population(2010 Census)` != "" ~ parse_number(`Population(2010 Census)`),
+    TRUE ~ parse_number(`Population(2000 Census)`))) %>% 
+  rename(
+    name = Town,
+    county = County) %>% 
+  select(-contains("Census")) %>% 
+  mutate(type = "Town") %>% 
+  select(type, everything())
+```
+
+### Write the data
+
+```{r}
+#write_tsv(cities, "../../data/wi-cities.tsv")
+#write_tsv(villages, "../../data/wi-villages.tsv")
+#write_tsv(towns, "../../data/wi-towns.tsv")
+```
+
